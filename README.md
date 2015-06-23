@@ -1,8 +1,6 @@
 
 # TODO
 
-- support `Cursor.observe` so we can support Blaze efficiently.
-
 - multiple subscriptions at the same time
 - what happens when cleared?
 - fine grained reactivieity

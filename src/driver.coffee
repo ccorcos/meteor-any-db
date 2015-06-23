@@ -1,3 +1,5 @@
+debug = console.log.bind(console)
+# debug = (->)
 
 {
   map
@@ -14,9 +16,6 @@
 
 isPlainObject = (x) ->
   Object.prototype.toString.apply(x) is "[object Object]"
-
-# debug = console.log.bind(console)
-debug = (->)
 
 mergeDeep = (dest, obj) ->
   newDest = clone(dest)
@@ -102,18 +101,10 @@ parseDDPFields = (msg) ->
 @DB = {}
 DB.name = 'ANY_DB'
 
-
-
 # Meteor does poll-and-diff does internally
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/polling_observe_driver.js#L176
 # We can use their internal package that does a bunch of hard stuff
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/diff-sequence/diff.js#L7
-
-
-#### `DB.publish(name, ms, query)`
-- `name`: name of the publication, so you can do `DB.subscribe(name, args...)`
-- `ms`: millisecond interval to poll-and-diff.
-- `query`: a function that returns a collection of documents that must contain an `_id` field!
 
 if Meteor.isServer
   DB.publish = (name, ms, query) ->
@@ -240,15 +231,15 @@ if Meteor.isClient
       return {stop: => delete @observers[i]}
 
     updateAdded: (doc, index, before) ->
-      for key, observer in @changeObservers
+      for key, observer of @changeObservers
         observer.addedBefore(doc._id, omit(['_id'], doc), before)
-      for key, observer in @observers
-        observer.addedBefore(doc, index, before)
+      for key, observer of @observers
+        observer.addedAt(doc, index, before)
 
     updateMoved: (doc, fromIndex, toIndex, before) ->
-      for key, observer in @changeObservers
+      for key, observer of @changeObservers
         observer.movedBefore(doc._id, before)
-      for key, observer in @observers
+      for key, observer of @observers
         observer.movedTo(doc, fromIndex, toIndex, before)
 
     indexOf: (id) ->
@@ -288,9 +279,9 @@ if Meteor.isClient
     changed: (id, newDoc, oldDoc, fields) ->
       i = @indexOf(id)
       if i < 0 then throw new Error("Expected to find id: #{id}")
-      for key, observer in @changeObservers
+      for key, observer of @changeObservers
         observer.changed(id, fields)
-      for key, observer in @observers
+      for key, observer of @observers
         observer.changedAt(newDoc, oldDoc, i)
       @dep.changed()
     
@@ -299,19 +290,26 @@ if Meteor.isClient
       # if i < 0 then throw new Error("Expected to find id")
       if i >= 0
         [oldDoc] = @results.splice(i, 1)
-        for key, observer in @changeObservers
+        for key, observer of @changeObservers
           observer.removed(id)
-        for key, observer in @observers
+        for key, observer of @observers
           observer.removedAt(clone(oldDoc), i)
         @dep.changed()
 
     reset: ->
+      # clear all observers
+      for doc in @results
+        for key, observer of @changeObservers
+          observer.removed(doc._id)
+        for key, observer of @observers
+          observer.removedAt(doc, 0)
       @results = []
       @dep.changed()
 
   DB.reset = ->
+    debug "reset"
     DB.docs = {}
-    for sub in DB.subscriptions
+    for subId, sub of DB.subscriptions
       sub.reset()
 
   # Get the DDP connection so we can register a store and listen to messages

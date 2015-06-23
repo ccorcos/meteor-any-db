@@ -1,0 +1,26 @@
+<body>
+  <div>
+    {{>fetch}}
+  </div>
+  <div>
+    {{>cursor}}
+  </div>
+</body>
+
+<template name="fetch">
+  fetch
+  <ul>
+    {{#each numbers}}
+      <li>{{value}}</li>
+    {{/each}}
+  </ul>
+</template>
+
+<template name="cursor">
+  cursor
+  <ul>
+    {{#each numbers}}
+      <li>{{value}}</li>
+    {{/each}}
+  </ul>
+</template>
