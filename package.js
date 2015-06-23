@@ -15,5 +15,5 @@ Package.onUse(function(api) {
     'random',
   ], both);
 
-  api.addFiles('src/driver.litcoffee', both);
+  api.addFiles('src/driver.coffee', both);
 });
