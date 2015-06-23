@@ -1,6 +1,8 @@
 
 # TODO
 
+- I'm going to try a different format that will feel a bit less hacky. The document will have a key "ANY_DB", then a "subId", and then a position. 
+
 - looks like theres an issue where adding a document with the same field but a different key isnt doing us justice. So lets be clever and make sure that the pubId.before is always sent as
 a change AFTER it is added.
 

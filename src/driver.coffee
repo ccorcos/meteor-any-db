@@ -139,8 +139,10 @@ if Meteor.isServer
         id = doc._id
         fields = omit(["_id"], doc)
         # null means its at the end of the collection
-        fields[DB.name] = "#{subId}.null"
         pub.added(DB.name, id, fields)
+        move = {}
+        move[DB.name] = "#{subId}.null"
+        pub.changed(DB.name, id, move)
 
       # Tell the client that the subscription is ready
       pub.ready()
@@ -150,8 +152,10 @@ if Meteor.isServer
       observer =
         addedBefore: (id, fields, before) ->
           fields = fields or {}
-          fields[DB.name] = "#{subId}.#{before}"
           pub.added(DB.name, id, fields)
+          # if we add two documents with different keys, the change
+          # isnt recognized, so we sent it over as a change.
+          @movedBefore(id, before)
         movedBefore: (id, before) ->
           fields = {}
           fields[DB.name] = "#{subId}.#{before}"
@@ -262,10 +266,14 @@ if Meteor.isClient
         @updateAdded(clone(doc), i, before)
       @dep.changed()
     
-    movedBefore: (id, before) ->          
+    movedBefore: (doc, before) ->
+      id = doc._id
       fromIndex = @indexOf(id)
-      if fromIndex < 0 then throw new Error("Expected to find id: #{id}")
-      [doc] = @results.splice(fromIndex, 1)
+      if fromIndex < 0
+        # to add a document to a subscription, we add then move.
+        @addedBefore(doc, before)
+        return
+      @results.splice(fromIndex, 1)
       if before is null
         @results.push(doc)
         @updateMoved(clone(doc), fromIndex, @results.length-1, before)
@@ -347,12 +355,15 @@ if Meteor.isClient
 
       if msg.msg is 'added'
         if doc then throw new Error("Expected not to find a document already present for an add")
-        [subId, before] = parseDDPFields(msg)
-        doc = omit([DB.name], msg.fields)
+        # Docs aren't passed to subscriptions this way. 
+        # They are added globally, and then "moved"
+        # [subId, before] = parseDDPFields(msg)
+        # doc = omit([DB.name], msg.fields)
+        doc = msg.fields
         doc._id = id
         DB.docs[id] = doc
         # pass the doc by reference!
-        DB.subscriptions[subId].addedBefore(doc, before)
+        # DB.subscriptions[subId].addedBefore(doc, before)
         return
 
       if msg.msg is 'removed'
@@ -368,7 +379,8 @@ if Meteor.isClient
         if not doc then throw new Error("Expected to find a document to change")
         [subId, before] = parseDDPFields(msg)
         if subId
-          DB.subscriptions[subId].movedBefore(id, before)
+          # this could potentially be adding the document
+          DB.subscriptions[subId].movedBefore(doc, before)
         fields = omit([DB.name], msg.fields)
         if R.keys(fields).length > 0
           oldDoc = clone(doc)
