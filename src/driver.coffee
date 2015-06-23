@@ -89,12 +89,6 @@ parseId = (id) ->
   else
     return id
 
-# This function parses the subId and before from ddb fields.
-parseDDPFields = (msg) ->
-  [subId, before] = msg.fields[DB.name]?.split('.') or []
-  if before is "null" then before = null
-  return [subId, before]
-
 
 # global on both client and server.
 # DB.name will be used as an identifier in DDP messages.
@@ -107,6 +101,21 @@ DB.name = 'ANY_DB'
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/diff-sequence/diff.js#L7
 
 if Meteor.isServer
+  
+  positionCount = 0
+  positionCounter = -> 
+    positionCount += 1 
+    # guard against some kind of overflow
+    positionCount = positionCount % 1000000000
+
+  addPosition = (fields, subId, before) ->
+    # we have to salt the position value so merge-box doesnt kill
+    # the message as a repeat value.
+    salt = positionCounter()
+    move = {}
+    move[subId] = "#{salt}.#{before}"
+    fields[DB.name] = move
+
   DB.publish = (name, ms, query) ->
     # name:  name of the publication, so you can do DB.subscribe(name, args...)
     # ms:    millisecond interval to poll-and-diff.
@@ -139,11 +148,9 @@ if Meteor.isServer
         id = doc._id
         fields = omit(["_id"], doc)
         # null means its at the end of the collection
+        addPosition(fields, subId, null)
         pub.added(DB.name, id, fields)
-        move = {}
-        move[DB.name] = "#{subId}.null"
-        pub.changed(DB.name, id, move)
-
+        
       # Tell the client that the subscription is ready
       pub.ready()
 
@@ -152,13 +159,11 @@ if Meteor.isServer
       observer =
         addedBefore: (id, fields, before) ->
           fields = fields or {}
+          addPosition(fields, subId, before)
           pub.added(DB.name, id, fields)
-          # if we add two documents with different keys, the change
-          # isnt recognized, so we sent it over as a change.
-          @movedBefore(id, before)
         movedBefore: (id, before) ->
           fields = {}
-          fields[DB.name] = "#{subId}.#{before}"
+          addPosition(fields, subId, null)
           pub.changed(DB.name, id, fields)
         changed: (id, fields) ->
           pub.changed(DB.name, id, fields)
@@ -192,7 +197,6 @@ if Meteor.isClient
 
   # All subscriptions, keyed by the subId. 
   DB.subscriptions = {}
-
 
   # DBSubscription represents a single subscription on the client. It must 
   # be able to funciton like `Meteor.subcribe`, `Mongo.Collection`, and  `Mongo.Cursor`.
@@ -261,7 +265,7 @@ if Meteor.isClient
         @updateAdded(clone(doc), @results.length-1, before)
       else
         i = @indexOf(before)
-        if i < 0 then throw new Error("Expected to find before _id")
+        if i < 0 then throw new Error("Expected to find before _id, #{before}")
         @results.splice(i,0,doc)
         @updateAdded(clone(doc), i, before)
       @dep.changed()
@@ -269,10 +273,7 @@ if Meteor.isClient
     movedBefore: (doc, before) ->
       id = doc._id
       fromIndex = @indexOf(id)
-      if fromIndex < 0
-        # to add a document to a subscription, we add then move.
-        @addedBefore(doc, before)
-        return
+      if fromIndex < 0 then throw new Error("Expected to find id: #{id}")
       @results.splice(fromIndex, 1)
       if before is null
         @results.push(doc)
@@ -283,6 +284,14 @@ if Meteor.isClient
         @results.splice(toIndex, 0, doc)
         @updateMoved(clone(doc), fromIndex, toIndex, before)
       @dep.changed()
+
+    addOrMoveBefore: (doc, before) ->
+      id = doc._id
+      fromIndex = @indexOf(id)
+      if fromIndex < 0
+        @addedBefore(doc, before)
+      else
+        @movedBefore(doc, before)
     
     changed: (id, newDoc, oldDoc, fields) ->
       i = @indexOf(id)
@@ -320,6 +329,18 @@ if Meteor.isClient
     for subId, sub of DB.subscriptions
       sub.reset()
 
+
+  # This function removes the salted position
+  parsePositions = (msg) ->
+    unless msg.fields[DB.name]
+      return undefined
+    positions = {}
+    for subId, value of msg.fields[DB.name]
+      before = value.split('.')[1]
+      if before is "null" then before = null
+      positions[subId] = before
+    return positions
+
   # Get the DDP connection so we can register a store and listen to messages
   DB.connection = if Meteor.isClient then Meteor.connection else Meteor.server
   
@@ -355,15 +376,14 @@ if Meteor.isClient
 
       if msg.msg is 'added'
         if doc then throw new Error("Expected not to find a document already present for an add")
-        # Docs aren't passed to subscriptions this way. 
-        # They are added globally, and then "moved"
-        # [subId, before] = parseDDPFields(msg)
-        # doc = omit([DB.name], msg.fields)
-        doc = msg.fields
+        positions = parsePositions(msg)
+        doc = omit([DB.name], msg.fields)
         doc._id = id
         DB.docs[id] = doc
-        # pass the doc by reference!
-        # DB.subscriptions[subId].addedBefore(doc, before)
+        if positions
+          for subId, before of positions
+            # pass the doc by reference!
+            DB.subscriptions[subId].addedBefore(doc, before)
         return
 
       if msg.msg is 'removed'
@@ -377,10 +397,13 @@ if Meteor.isClient
 
       if msg.msg is 'changed'
         if not doc then throw new Error("Expected to find a document to change")
-        [subId, before] = parseDDPFields(msg)
-        if subId
-          # this could potentially be adding the document
-          DB.subscriptions[subId].movedBefore(doc, before)
+        
+        positions = parsePositions(msg)
+        if positions
+          for subId, before of positions
+            # this could potentially be adding OR moving the document
+            DB.subscriptions[subId].addOrMoveBefore(doc, before)
+
         fields = omit([DB.name], msg.fields)
         if R.keys(fields).length > 0
           oldDoc = clone(doc)
