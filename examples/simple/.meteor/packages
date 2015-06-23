@@ -7,5 +7,5 @@
 meteor-platform
 insecure
 coffeescript
-ccorcos:db
 ramda:ramda
+ccorcos:any-db

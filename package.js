@@ -1,8 +1,8 @@
 Package.describe({
-  name: 'ccorcos:db',
+  name: 'ccorcos:any-db',
   summary: 'Database API for Meteor',
   version: '0.0.1',
-  git: 'https://github.com/ccorcos/meteor-db'
+  git: 'https://github.com/ccorcos/meteor-any-db'
 });
 
 Package.onUse(function(api) {
@@ -13,8 +13,7 @@ Package.onUse(function(api) {
     'ramda:ramda@0.13.0',
     'diff-sequence',
     'random',
-    // 'mongo-id'
   ], both);
 
-  api.addFiles('src/driver.coffee', both);
+  api.addFiles('src/driver.litcoffee', both);
 });
