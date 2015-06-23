@@ -1,24 +1,26 @@
 
 # TODO
 
+- looks like theres an issue where adding a document with the same field but a different key isnt doing us justice. So lets be clever and make sure that the pubId.before is always sent as
+a change AFTER it is added.
+
+- lets also make sure that we can do two different lists with differenyt changing orders.
+
+
 - multiple subscriptions at the same time
 - what happens when cleared?
 - fine grained reactivieity
 - latency compensation
 - MySQL, PostgresQL, Neo4j, Redis, Rethink
 
-
 - how to use the "diff-sequence" package?
 - any way to make hooks into the CLI?
 - build your own CLI tools
 - neo4j, postgresql, MySQL, rethinkdb, redis, changefeeds?
 
-- compile litcoffee into nice HTML
-
 - sub onready?
 
-- fine grained reactivity on the cleint
-- client initiated refesh
+- client initiated update as opposed to poll and diff
 - pub dep tracking on the server
 
 - subscriptions from server to server
