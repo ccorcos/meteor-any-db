@@ -149,6 +149,8 @@ if Meteor.isServer
         fields = omit(["_id"], doc)
         # null means its at the end of the collection
         addPosition(fields, subId, null)
+        console.log "publishing fields"
+        console.log " ", id,  EJSON.stringify(fields)
         pub.added(DB.name, id, fields)
         
       # Tell the client that the subscription is ready
