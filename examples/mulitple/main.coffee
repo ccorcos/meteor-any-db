@@ -8,7 +8,7 @@
 
 if Meteor.isServer
   doc = (i) ->
-    {_id:i, value:i}
+    {_id:"x#{i}", value:i}
   docs = null
   
   # publish 5 numbers always

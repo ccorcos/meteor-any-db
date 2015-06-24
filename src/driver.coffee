@@ -71,6 +71,21 @@ fields2Obj = (fields) ->
       extendDeep(dest, obj)
   return dest
 
+# It appears DDP doesnt do very well with nested key-values.
+# https://forums.meteor.com/t/how-to-publish-nested-fields-that-arent-arrays/6007
+# https://github.com/meteor/meteor/issues/4615
+
+obj2fields = (obj) ->
+  dest = {}
+  for key,value of fields
+    if isPlainObject(value)
+      deeperFields = obj2fields(value)
+      for k,v of deeperFields
+        dest["#{key}#{k}"] = v
+    else
+      dest[key] = clone(value)
+  return dest
+
 # The DDP spec doesnt talk much about this but it looks like DDP sends funny ID's for the 
 # documents. They use the `mongo-id` package but I get an error when I use it, so I copied it.
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L139
@@ -143,18 +158,15 @@ if Meteor.isServer
       # The format of the message will be the subscription id and the position separated by a dot.
 
       # Get the initial data. Add them in order to the end.
-      docs = poll()
-      for doc in docs
-        id = doc._id
-        fields = omit(["_id"], doc)
-        # null means its at the end of the collection
-        addPosition(fields, subId, null)
-        console.log "publishing fields"
-        console.log " ", id,  EJSON.stringify(fields)
-        pub.added(DB.name, id, fields)
+      # docs = poll()
+      # for doc in docs
+      #   id = doc._id
+      #   fields = omit(["_id"], doc)
+      #   # null means its at the end of the collection
+      #   addPosition(fields, subId, null)
+      #   pub.added(DB.name, id, fields)
         
-      # Tell the client that the subscription is ready
-      pub.ready()
+      docs = []
 
       # The observer needs to publish to the correct database name
       # and send the subId and position.
@@ -163,20 +175,29 @@ if Meteor.isServer
           fields = fields or {}
           addPosition(fields, subId, before)
           pub.added(DB.name, id, fields)
+          debug "added", subId, id, fields
         movedBefore: (id, before) ->
           fields = {}
           addPosition(fields, subId, null)
           pub.changed(DB.name, id, fields)
+          debug "moved", subId, id, fields
         changed: (id, fields) ->
           pub.changed(DB.name, id, fields)
+          debug "changed", subId, id, fields
         removed: (id) ->
           pub.removed(DB.name, id)
+          debug "removed", subId, id
 
       # MDG already did the hard work for us :)
       pollAndDiff = ->
         newDocs = poll()
         DiffSequence.diffQueryChanges(true, docs, newDocs, observer)
         docs = newDocs
+
+
+      # Initial poll and tell the client that the subscription is ready
+      pollAndDiff()
+      pub.ready()
 
       # Set the poll-and-diff interval
       intervalId = Meteor.setInterval(pollAndDiff, ms)

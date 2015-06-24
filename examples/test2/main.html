@@ -1,0 +1,11 @@
+<body>
+  {{> main}}
+</body>
+
+<template name="main">
+  <ul>
+    {{#each docs}}
+      <li>{{value.number}} * 2 = {{value.double}}</li>
+    {{/each}}
+  </ul>
+</template>

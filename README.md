@@ -1,6 +1,9 @@
 
 # TODO
 
+- check out the ddp messages using the ddp proxy analyser. see if these messages are going through. create a barebones example without this pacakge that does replicates this sort of publishing.
+
+
 - I'm going to try a different format that will feel a bit less hacky. The document will have a key "ANY_DB", then a "subId", and then a position. 
 
 - looks like theres an issue where adding a document with the same field but a different key isnt doing us justice. So lets be clever and make sure that the pubId.before is always sent as
