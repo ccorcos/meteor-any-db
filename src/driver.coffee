@@ -75,13 +75,13 @@ fields2Obj = (fields) ->
 # https://forums.meteor.com/t/how-to-publish-nested-fields-that-arent-arrays/6007
 # https://github.com/meteor/meteor/issues/4615
 
-obj2fields = (obj) ->
+obj2Fields = (obj) ->
   dest = {}
-  for key,value of fields
+  for key,value of obj
     if isPlainObject(value)
-      deeperFields = obj2fields(value)
+      deeperFields = obj2Fields(value)
       for k,v of deeperFields
-        dest["#{key}#{k}"] = v
+        dest["#{key}.#{k}"] = v
     else
       dest[key] = clone(value)
   return dest
@@ -174,15 +174,15 @@ if Meteor.isServer
         addedBefore: (id, fields, before) ->
           fields = fields or {}
           addPosition(fields, subId, before)
-          pub.added(DB.name, id, fields)
+          pub.added(DB.name, id, obj2Fields(fields))
           debug "added", subId, id, fields
         movedBefore: (id, before) ->
           fields = {}
           addPosition(fields, subId, null)
-          pub.changed(DB.name, id, fields)
+          pub.changed(DB.name, id, obj2Fields(fields))
           debug "moved", subId, id, fields
         changed: (id, fields) ->
-          pub.changed(DB.name, id, fields)
+          pub.changed(DB.name, id, obj2Fields(fields))
           debug "changed", subId, id, fields
         removed: (id) ->
           pub.removed(DB.name, id)
@@ -193,7 +193,6 @@ if Meteor.isServer
         newDocs = poll()
         DiffSequence.diffQueryChanges(true, docs, newDocs, observer)
         docs = newDocs
-
 
       # Initial poll and tell the client that the subscription is ready
       pollAndDiff()
@@ -359,9 +358,10 @@ if Meteor.isClient
       return undefined
     positions = {}
     for subId, value of msg.fields[DB.name]
-      before = value.split('.')[1]
-      if before is "null" then before = null
-      positions[subId] = before
+      if value isnt undefined
+        before = value.split('.')[1]
+        if before is "null" then before = null
+        positions[subId] = before
     return positions
 
   # Get the DDP connection so we can register a store and listen to messages
@@ -382,6 +382,8 @@ if Meteor.isClient
     update: (msg) ->
       id = parseId(msg.id)
       doc = DB.docs[id]
+      # unwrap the fields.
+      msg.fields = fields2Obj(msg.fields)
 
       debug("msg", msg)
 
@@ -396,6 +398,7 @@ if Meteor.isClient
       #   else
       #     extendDeep(doc, replace)
       #   return
+
 
       if msg.msg is 'added'
         if doc then throw new Error("Expected not to find a document already present for an add")
@@ -421,6 +424,12 @@ if Meteor.isClient
       if msg.msg is 'changed'
         if not doc then throw new Error("Expected to find a document to change")
         
+        # if a sub clears subscription
+        if msg.fields[DB.name]
+          for subId, value of msg.fields[DB.name]
+            if value is undefined
+              DB.subscriptions[subId].removed(id)
+
         positions = parsePositions(msg)
         if positions
           for subId, before of positions
