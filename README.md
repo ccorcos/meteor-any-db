@@ -2,9 +2,6 @@
 
 - simple chat application
 
-- publish should work reactively without poll and diff for query thats actually
-  a cursor that implement observeChanges. Thus it works just as well with Mongo
-  if you publish a cursor.
 
 - neo4j example
 - postgresql example

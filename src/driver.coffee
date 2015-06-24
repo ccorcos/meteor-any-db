@@ -106,7 +106,6 @@ parseId = (id) ->
   else
     return id
 
-
 # global on both client and server.
 # DB.name will be used as an identifier in DDP messages.
 @DB = {}
