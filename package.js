@@ -12,7 +12,6 @@ Package.onUse(function(api) {
     'coffeescript', 
     'ramda:ramda@0.13.0',
     'diff-sequence',
-    'random',
   ], both);
 
   api.addFiles('src/driver.coffee', both);
