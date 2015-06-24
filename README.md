@@ -1,33 +1,21 @@
-
 # TODO
 
-- check out the ddp messages using the ddp proxy analyser. see if these messages are going through. create a barebones example without this pacakge that does replicates this sort of publishing.
+- simple chat application
 
+- publish should work reactively without poll and diff for query thats actually
+  a cursor that implement observeChanges. Thus it works just as well with Mongo
+  if you publish a cursor.
 
-- I'm going to try a different format that will feel a bit less hacky. The document will have a key "ANY_DB", then a "subId", and then a position. 
+- neo4j example
+- postgresql example
 
-- looks like theres an issue where adding a document with the same field but a different key isnt doing us justice. So lets be clever and make sure that the pubId.before is always sent as
-a change AFTER it is added.
-
-- lets also make sure that we can do two different lists with differenyt changing orders.
-
-
-- multiple subscriptions at the same time
-- what happens when cleared?
 - fine grained reactivieity
 - latency compensation
-- MySQL, PostgresQL, Neo4j, Redis, Rethink
-
-- how to use the "diff-sequence" package?
-- any way to make hooks into the CLI?
-- build your own CLI tools
-- neo4j, postgresql, MySQL, rethinkdb, redis, changefeeds?
+- PostgresQL, Neo4j, Mongo, Rethink with changefeeds
 
 - sub onready?
-
 - client initiated update as opposed to poll and diff
-- pub dep tracking on the server
-
+- homebrewed dependency publication dependency tracking
 - subscriptions from server to server
 
 # How it works
@@ -39,7 +27,7 @@ a change AFTER it is added.
 First, let me go over the current state of Mongo integration with Meteor.
 
 Without Oplog tailing, Meteor will watch for database writes locally and update
-the subscriptions on those writes. that depend They do this by effectively reimplementing
+the subscriptions on those writes. They do this by effectively reimplementing
 Mongo in Javascript, aka Minimongo. This is a huge pain, but has had great success.
 If you are running two Meteor servers, however, then these servers aren't aware of
 each others subscriptions. In this case, Meteor resorts to polling Mongo every 10 seconds
@@ -55,7 +43,7 @@ So if we were to implement other database drivers, it seems the 10 second poll-a
 would be a could place to start. This is actually pretty simple since Meteor lets us write
 arbitrary data to our publications. Thus, the challenging part is the client. 
 
-Implementing miniX for every database is clearly not a scalable solution.
+Implementing mini[db] for every database is clearly not a scalable solution.
 In fact, its always bothered me how I end up writing the same exact Mongo query twice -- 
 once in `Meteor.publish` and once in `Template.helpers`. Also, with more complicated
 database queries you might run with Neo4j, there's no way to replicate these queries 

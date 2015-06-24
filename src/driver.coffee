@@ -13,9 +13,11 @@ debug = console.log.bind(console)
   propEq
 } = R
 
-
 isPlainObject = (x) ->
   Object.prototype.toString.apply(x) is "[object Object]"
+
+isNumber = (x) ->
+  Object.prototype.toString.apply(x) is "[object Number]"
 
 mergeDeep = (dest, obj) ->
   newDest = clone(dest)
@@ -131,7 +133,34 @@ if Meteor.isServer
     move[subId] = "#{salt}.#{before}"
     fields[DB.name] = move
 
-  DB.publish = (name, ms, query) ->
+  # return an observer that publishes ordered data to subscribers
+  createObserver = (pub, subId) ->
+    # DDP doesnt support ordered document collections yet
+    # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
+    # so we don't have addedBefore. However, we could be doing some advanced sorting in Neo4j or something
+    # so we'll want to support that. Thus we'll add a key, DB.name to all position-based callbacks as a shim.
+    # The format of the message will be the subscription id and the position separated by a dot.
+
+    # The observer needs to publish to the correct database name
+    # and send the subId and position.
+    addedBefore: (id, fields, before) ->
+      fields = fields or {}
+      addPosition(fields, subId, before)
+      pub.added(DB.name, id, obj2Fields(fields))
+      debug "added", subId, id, fields
+    movedBefore: (id, before) ->
+      fields = {}
+      addPosition(fields, subId, null)
+      pub.changed(DB.name, id, obj2Fields(fields))
+      debug "moved", subId, id, fields
+    changed: (id, fields) ->
+      pub.changed(DB.name, id, obj2Fields(fields))
+      debug "changed", subId, id, fields
+    removed: (id) ->
+      pub.removed(DB.name, id)
+      debug "removed", subId, id
+
+  DB.pollAndDiffPublish = (name, ms, query) ->
     # name:  name of the publication, so you can do DB.subscribe(name, args...)
     # ms:    millisecond interval to poll-and-diff.
     # query: a function called with args from DB.subscribe that returns a 
@@ -139,7 +168,7 @@ if Meteor.isServer
 
     # a friendly warning in case they thought it was seconds.
     if ms < 1000
-      console.warn("Polling every #{ms} ms. This is pretty damn fast!")
+      console.warn("Polling every #{ms} ms. This is pretty damn fast!")      
 
     # When you return a Mongo.Cursor from Meteor.publish, it calls this function:
     # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L302
@@ -151,42 +180,9 @@ if Meteor.isServer
       # pass the arguments to the query function
       poll = () -> apply(query, args)
 
-      # DDP doesnt support ordered document collections yet
-      # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
-      # so we don't have addedBefore. However, we could be doing some advanced sorting in Neo4j or something
-      # so we'll want to support that. Thus we'll add a key, DB.name to all position-based callbacks as a shim.
-      # The format of the message will be the subscription id and the position separated by a dot.
-
-      # Get the initial data. Add them in order to the end.
-      # docs = poll()
-      # for doc in docs
-      #   id = doc._id
-      #   fields = omit(["_id"], doc)
-      #   # null means its at the end of the collection
-      #   addPosition(fields, subId, null)
-      #   pub.added(DB.name, id, fields)
-        
+      observer = createObserver(pub, subId)
+      
       docs = []
-
-      # The observer needs to publish to the correct database name
-      # and send the subId and position.
-      observer =
-        addedBefore: (id, fields, before) ->
-          fields = fields or {}
-          addPosition(fields, subId, before)
-          pub.added(DB.name, id, obj2Fields(fields))
-          debug "added", subId, id, fields
-        movedBefore: (id, before) ->
-          fields = {}
-          addPosition(fields, subId, null)
-          pub.changed(DB.name, id, obj2Fields(fields))
-          debug "moved", subId, id, fields
-        changed: (id, fields) ->
-          pub.changed(DB.name, id, obj2Fields(fields))
-          debug "changed", subId, id, fields
-        removed: (id) ->
-          pub.removed(DB.name, id)
-          debug "removed", subId, id
 
       # MDG already did the hard work for us :)
       pollAndDiff = ->
@@ -205,7 +201,19 @@ if Meteor.isServer
       pub.onStop ->
         Meteor.clearInterval(intervalId)
 
+  DB.publishCursor = (name, getCursor) ->
+    Meteor.publish name, (subId, args...) ->
+      pub = this
+      cursor = apply(getCursor, args)
+      observer = createObserver(pub, subId)
+      cursor.observeChanges(observer)
+      pub.ready()
 
+  DB.publish = (name, msOrFunc) ->
+    if isNumber(msOrFunc)
+      DB.pollAndDiffPublish.apply(DB, arguments)
+    else
+      DB.publishCursor.apply(DB, arguments)
 
 # We should be able to subscribe from server to server as well
 # but that will require some stuff with Fibers. Right now, its just
@@ -399,7 +407,6 @@ if Meteor.isClient
       #     extendDeep(doc, replace)
       #   return
 
-
       if msg.msg is 'added'
         if doc then throw new Error("Expected not to find a document already present for an add")
         positions = parsePositions(msg)
@@ -459,7 +466,6 @@ if Meteor.isClient
     # retrieveOriginals: function () {
     #   return self._collection.retrieveOriginals();
     # }
-
 
   # The client must tell the server a subscription id. This is used to sort out
   # the documents coming in over DDP. We'll use a simple counter to generate ids.
