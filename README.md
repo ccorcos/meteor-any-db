@@ -1,13 +1,15 @@
 # TODO
 
-- simple chat application
+- latency compensation is a bit trickier than it seems
 
+
+- simple chat application
+- latency compensation
 
 - neo4j example
 - postgresql example
-
 - fine grained reactivieity
-- latency compensation
+
 - PostgresQL, Neo4j, Mongo, Rethink with changefeeds
 
 - sub onready?
