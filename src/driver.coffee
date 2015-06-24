@@ -13,6 +13,14 @@ debug = console.log.bind(console)
   propEq
 } = R
 
+
+counter = () ->
+  i = 0
+  ->
+    i += 1
+    i %= 100000000000
+    return i
+
 isPlainObject = (x) ->
   Object.prototype.toString.apply(x) is "[object Object]"
 
@@ -118,19 +126,14 @@ DB.name = 'ANY_DB'
 
 if Meteor.isServer
   
-  positionCount = 0
-  positionCounter = -> 
-    positionCount += 1 
-    # guard against some kind of overflow
-    positionCount = positionCount % 1000000000
+  salter = counter()
 
-  addPosition = (fields, subId, before) ->
+  # sets the position of the doc for the subId to the fields object.
+  addPosition = R.curry (subId, before, fields) ->
     # we have to salt the position value so merge-box doesnt kill
     # the message as a repeat value.
-    salt = positionCounter()
-    move = {}
-    move[subId] = "#{salt}.#{before}"
-    fields[DB.name] = move
+    salt = salter()
+    R.assocPath([DB.name, subId], "#{salt}.#{before}", fields)
 
   # return an observer that publishes ordered data to subscribers
   createObserver = (pub, subId) ->
@@ -143,17 +146,18 @@ if Meteor.isServer
     # The observer needs to publish to the correct database name
     # and send the subId and position.
     addedBefore: (id, fields, before) ->
-      fields = fields or {}
-      addPosition(fields, subId, before)
-      pub.added(DB.name, id, obj2Fields(fields))
+      fields = R.pipe(
+        addPosition(subId, before)
+        obj2Fields
+      )(fields or {})
+      pub.added(DB.name, id, fields)
       debug "added", subId, id, fields
     movedBefore: (id, before) ->
-      fields = {}
-      addPosition(fields, subId, null)
-      pub.changed(DB.name, id, obj2Fields(fields))
+      fields = addPosition(subId, null, {})
+      pub.changed(DB.name, id, fields)
       debug "moved", subId, id, fields
     changed: (id, fields) ->
-      pub.changed(DB.name, id, obj2Fields(fields))
+      pub.changed(DB.name, id, fields)
       debug "changed", subId, id, fields
     removed: (id) ->
       pub.removed(DB.name, id)
@@ -213,6 +217,13 @@ if Meteor.isServer
       DB.pollAndDiffPublish.apply(DB, arguments)
     else
       DB.publishCursor.apply(DB, arguments)
+
+
+
+
+
+
+
 
 # We should be able to subscribe from server to server as well
 # but that will require some stuff with Fibers. Right now, its just
