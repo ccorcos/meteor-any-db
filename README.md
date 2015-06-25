@@ -1,17 +1,15 @@
 # TODO
 
-- sub onready?
-- mongo example
-
-- neo4j setup
 - postgresql example
-- fine grained reactiviity
-
 - PostgresQL, Neo4j, Mongo, Rethink with changefeeds
 
 - client initiated update as opposed to poll and diff
 - homebrewed dependency publication dependency tracking
 - subscriptions from server to server
+
+- All I had to do to change this chat app from Neo4j to Mongo was change 3 lines of code.
+- only needed 10 lines of code for latency compensation
+- no fine grained reactiviity cursors, use observeChanges or observe for now
 
 # How it works
 
