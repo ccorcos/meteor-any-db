@@ -8,6 +8,6 @@
     <button>submit</button>
   </div>
   {{#each msgs}}
-    <div class="row">{{text}}</div>
+    <div class="row">{{text}}{{#if unverified}}*{{/if}}</div>
   {{/each}}
 </template>

@@ -132,8 +132,10 @@ if Meteor.isServer
       return changingDocs
 
 if Meteor.isClient
-  @stat = DB.subscribe('stat')    
-  @changing = DB.subscribe('changing')    
+  @stat = DB.createSubscription('stat')    
+  @changing = DB.createSubscription('changing')   
+  stat.start()
+  changing.start() 
 
   Template.stat.helpers
     array: () -> stat.fetch()

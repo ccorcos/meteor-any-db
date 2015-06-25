@@ -11,6 +11,8 @@ debug = console.log.bind(console)
   split
   findIndex
   propEq
+  append
+  concat
 } = R
 
 remember = (f) ->
@@ -43,6 +45,13 @@ mergeDeep = (dest, obj) ->
       newDest[k] = clone(v)
   return newDest
 
+extendDeep = (dest, obj) ->
+  for k,v of obj
+    if isPlainObject(v)
+      dest[k] = extendDeep(dest[k] or {}, v)
+    else
+      dest[k] = v
+  return dest
 
 # DDP "change" messages will set fields to undefined if they are meant to be unset.
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L172
@@ -233,9 +242,9 @@ if Meteor.isClient
   # fetch() with it. And the nice thing is that it is also an observer, so you can
   # call addedBefore, movedBefore, changed, and removed to update it!
 
-  subCounter = counter()
-  createSubscription = (name, args...) ->
-    subId = counter()
+  subCount = counter()
+  DB.createSubscription = (name, args...) ->
+    subId = subCount()
     sub = new DBSubscriptionCursor(subId, name, args)
     DB.subscriptions[subId] = sub
     return sub
@@ -250,12 +259,21 @@ if Meteor.isClient
       @docs = []
       @docIds = {}
       @dep = new Tracker.Dependency()
-      @observerCounter = counter()
+      @observerCount = counter()
       @changeObservers = {}
       @observers = {}
+      @undos = {}
+
+    addUndo: (id, undo) ->
+      unless @undos[id]
+        @undos[id] = []
+      @undos[id].unshift(undo)
+
+    handleUndo: (id) ->
+      @undos[id]?.pop()?()
 
     start: ->
-      @sub = Meteor.subscribe.apply(Meteor, R.insert(@name, @subId, @args))
+      @sub = Meteor.subscribe.apply(Meteor, concat([@name, @subId], @args))
 
     stop: ->
       @sub?.stop?()
@@ -268,7 +286,7 @@ if Meteor.isClient
       # add all the initial docs
       for doc in clone(@docs)
         callbacks.addedBefore(doc._id, omit(["_id", doc]), null)
-      i = @observerCounter()
+      i = @observerCount()
       @changeObservers[i] = callbacks
       return {stop: => delete @changeObservers[i]}
 
@@ -278,7 +296,7 @@ if Meteor.isClient
       for doc in clone(@docs)
         callbacks.addedAt(doc, length, null)
         length++
-      i = @observerCounter()
+      i = @observerCount()
       @observers[i] = callbacks
       return {stop: => delete @observers[i]}
 
@@ -311,9 +329,10 @@ if Meteor.isClient
   
     # registerStore DDP updates will call these functions to update
     # the subscriptions.
-    addedBefore: (_id, fields, before, noUpdate=false) ->
-      doc = merge({_id}, fields)
-      @docIds[_id] = true
+    addedBefore: (id, fields, before, noUpdate=false) ->
+      @handleUndo(id)
+      doc = merge({_id: id}, fields)
+      @docIds[id] = true
       if before is null
         @docs = append(doc, @docs)
         @updateAdded(clone(doc), @docs.length-1, before)
@@ -327,6 +346,7 @@ if Meteor.isClient
         @dep.changed()
 
     movedBefore: (id, before, noUpdate=false) ->
+      @handleUndo(id)
       fromIndex = @indexOf(id)
       if fromIndex < 0 then throw new Error("Expected to find id: #{id}")
       @docs = clone(@docs)
@@ -345,6 +365,7 @@ if Meteor.isClient
 
 
     changed: (id, fields, noUpdate=false) ->
+      @handleUndo(id)
       @docs = clone(@docs)
       i = @indexOf(id)
       if i < 0 then throw new Error("Expected to find id: #{id}")
@@ -356,6 +377,7 @@ if Meteor.isClient
 
 
     removed: (id, noUpdate=false) ->
+      @handleUndo(id)
       i = @indexOf(id)
       if i < 0 then throw new Error("Expected to find id")
       delete @docIds[id]
@@ -374,6 +396,7 @@ if Meteor.isClient
       @docs = []
       @docIds = {}
       @dep.changed()
+      @undos = {}
 
   # This function removes the salted position
   parsePositions = (saltedObj) ->
@@ -403,7 +426,7 @@ if Meteor.isClient
           before = value.split('.')[1]
           if before is "null" then before = null
           positions[subId] = before
-    fields = omit([DB.name], fields)
+    fields = omit([DB.name], msg.fields)
     return {id, fields, positions, cleared}
 
   # Get the DDP connection so we can register a store and listen to messages
@@ -416,7 +439,7 @@ if Meteor.isClient
 
   # Find a certain document by id, whereever it may be.
   findDoc = (id) ->
-    for subId, sub in DB.subscriptions
+    for subId, sub of DB.subscriptions
       if sub.docIds[id]
         return clone(sub.docs[sub.indexOf(id)])
     return undefined
@@ -434,22 +457,28 @@ if Meteor.isClient
 
       {id, fields, positions, cleared} = parseDDPMsg(msg)
       
+      # debug(id, fields, positions, cleared)
+
       if msg.msg is 'added'
         for subId, before of positions
           DB.subscriptions[subId].addedBefore(id, fields, before)
         return
 
+
       # this means entirely removed from the client
       if msg.msg is 'removed'
         for key, sub of DB.subscriptions
-          sub.removed(id)
+          if sub.docIds[id]
+            sub.removed(id)
         return
 
       if msg.msg is 'changed'
         # remove cleared subscriptions which come in as a subId
         # set to undefined
         for subId, value of cleared
-          DB.subscriptions[subId].removed(id)
+          debug "cleared", id, "from", subId
+          sub = DB.subscriptions[subId]
+          sub.removed(id)
 
         # if the document exists in a different subscription
         # then when we add to another subscription, it will simply
@@ -466,7 +495,7 @@ if Meteor.isClient
             sub.movedBefore(id, before)
           else
             doc = lookup(id)
-            sub.addedBefore(id, omit(['_id'], doc) before)
+            sub.addedBefore(id, omit(['_id'], doc), before)
 
         if R.keys(fields).length > 0
           for subId, sub of DB.subscriptions
@@ -487,5 +516,3 @@ if Meteor.isClient
     # retrieveOriginals: function () {
     #   return self._collection.retrieveOriginals();
     # }
-
-

@@ -14,5 +14,5 @@ Package.onUse(function(api) {
     'diff-sequence',
   ], both);
 
-  api.addFiles('src/driver.coffee', both);
+  api.addFiles('src/db.coffee', both);
 });

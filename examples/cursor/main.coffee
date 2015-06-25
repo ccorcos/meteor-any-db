@@ -24,7 +24,8 @@ if Meteor.isServer
       return R.clone(docs)
 
 if Meteor.isClient
-  @sub = DB.subscribe('numbers', 20)    
+  @sub = DB.createSubscription('numbers', 20)
+  sub.start()
 
   Template.fetch.helpers
     numbers: () ->
