@@ -175,15 +175,15 @@ if Meteor.isServer
       pub.removed(DB.name, id)
       debug "removed", subId, id
 
+  # to trigger a poll and diff
+  DB.triggers = {}
+
   DB.pollAndDiffPublish = (name, ms, query) ->
     # name:  name of the publication, so you can do DB.subscribe(name, args...)
     # ms:    millisecond interval to poll-and-diff.
+    #        if ms <= 0 then we resort to triggered publishing
     # query: a function called with args from DB.subscribe that returns a 
     #        collection of documents that must contain an `_id` field!
-
-    # a friendly warning in case they thought it was seconds.
-    if ms < 1000
-      console.warn("Polling every #{ms} ms. This is pretty damn fast!")      
 
     # When you return a Mongo.Cursor from Meteor.publish, it calls this function:
     # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L302
@@ -204,11 +204,16 @@ if Meteor.isServer
       pollAndDiff()
       # Tell the client that the subscription is ready
       pub.ready()
-      # Set the poll-and-diff interval
-      intervalId = Meteor.setInterval(pollAndDiff, ms)
-      # clean up
-      pub.onStop ->
-        Meteor.clearInterval(intervalId)
+      if ms > 0
+        # Set the poll-and-diff interval
+        intervalId = Meteor.setInterval(pollAndDiff, ms)
+        # clean up
+        pub.onStop ->
+          Meteor.clearInterval(intervalId)
+      else
+        DB.triggers[subId] = pollAndDiff
+        pub.onStop -> 
+          delete DB.triggers[subId]
 
   # If you can implement observeChanges, then you can publish a cursor
   DB.publishCursor = (name, getCursor) ->
@@ -227,6 +232,11 @@ if Meteor.isServer
     else
       DB.publishCursor.apply(DB, arguments)
 
+
+Meteor.methods
+  triggerSub: (subId) ->
+    if Meteor.isServer
+      DB.triggers[subId]()
 
 # We should be able to subscribe from server to server as well
 # but that will require some stuff with Fibers. Right now, its just
@@ -264,6 +274,9 @@ if Meteor.isClient
       @changeObservers = {}
       @observers = {}
       @undos = {}
+
+    trigger: ->
+      Meteor.call('triggerSub', @subId)
 
     addUndo: (id, undo) ->
       unless @undos[id]
