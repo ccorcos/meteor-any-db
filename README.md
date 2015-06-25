@@ -1,15 +1,25 @@
 # TODO
 
+- chatroom with dependencies and instant update triggering!
+
+- documentation
+  - client initiated update as opposed to poll and diff
+  - neo4j and mongo examples
+
 - postgresql example
 - PostgresQL, Neo4j, Mongo, Rethink with changefeeds
 
-- client initiated update as opposed to poll and diff
+ 
 - homebrewed dependency publication dependency tracking
 - subscriptions from server to server
+
 
 - All I had to do to change this chat app from Neo4j to Mongo was change 3 lines of code.
 - only needed 10 lines of code for latency compensation
 - no fine grained reactiviity cursors, use observeChanges or observe for now
+- 11 more lines of code and we can trigger them from the client.
+
+
 
 # How it works
 
