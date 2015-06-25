@@ -24,7 +24,7 @@ if Meteor.isClient
   @sub = DB.createSubscription('numbers', 20)
 
   Template.main.onRendered ->
-    @autorun -> sub.start()
+    @autorun -> sub.start -> console.log "subscription ready"
 
   Template.main.helpers
     numbers: () -> sub.fetch()

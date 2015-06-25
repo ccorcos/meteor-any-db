@@ -1,12 +1,14 @@
 # TODO
 
-- neo4j example
+- sub onready?
+- mongo example
+
+- neo4j setup
 - postgresql example
-- fine grained reactivieity
+- fine grained reactiviity
 
 - PostgresQL, Neo4j, Mongo, Rethink with changefeeds
 
-- sub onready?
 - client initiated update as opposed to poll and diff
 - homebrewed dependency publication dependency tracking
 - subscriptions from server to server

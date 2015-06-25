@@ -13,6 +13,7 @@ debug = console.log.bind(console)
   propEq
   append
   concat
+  pipe
 } = R
 
 remember = (f) ->
@@ -272,8 +273,12 @@ if Meteor.isClient
     handleUndo: (id) ->
       @undos[id]?.pop()?()
 
-    start: ->
-      @sub = Meteor.subscribe.apply(Meteor, concat([@name, @subId], @args))
+    start: (onReady) ->
+      subArgs = pipe(
+        concat([@name, @subId]),
+        append(onReady)
+      )(@args)
+      @sub = Meteor.subscribe.apply(Meteor, subArgs)
 
     stop: ->
       @sub?.stop?()
