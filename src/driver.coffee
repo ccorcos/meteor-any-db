@@ -36,24 +36,28 @@ mergeDeep = (dest, obj) ->
       newDest[k] = clone(v)
   return newDest
 
-extendDeep = (dest, obj) ->
-  for k,v of obj
-    if isPlainObject(v)
-      dest[k] = extendDeep(dest[k] or {}, v)
-    else
-      dest[k] = v
-  return dest
+# extendDeep = (dest, obj) ->
+#   for k,v of obj
+#     if isPlainObject(v)
+#       dest[k] = extendDeep(dest[k] or {}, v)
+#     else
+#       dest[k] = v
+#   return dest
 
 # DDP "change" messages will set fields to undefined if they are meant to be unset.
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L172
 # So we can call `extendDeep` then `deleteUndefined` update changes.
-deleteUndefined = (obj) ->
+deleteUndefined = (x) ->
+  obj = clone(x)
   for k,v of obj
     if isPlainObject(v)
       deleteUndefined(v)
     else if v is undefined
       delete obj[k]
   return obj
+
+changeDoc = (doc, fields) ->
+  deleteUndefined(mergeDeep(doc, fields))
 
 # Its not particularly clear in the DDP spec if the fields object contains nested EJSON objects.
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#messages-2
@@ -230,39 +234,50 @@ if Meteor.isServer
 # on the client.
 if Meteor.isClient
 
-  # Key-value store for all data passed through this API. 
-  # This simply uses the _id field as a key. There may be
-  # more efficient ways of storing this data...
-  DB.docs = {}
-
   # All subscriptions, keyed by the subId. 
   DB.subscriptions = {}
 
   # DBSubscription represents a single subscription on the client. It must 
   # be able to funciton like `Meteor.subcribe`, `Mongo.Collection`, and  `Mongo.Cursor`.
-  # When data is added to DB.docs, its also passed by reference to the subscriptions.
-  # This way, any changes are reflected immediately. Any data returned from here
-  # ought to be cloned so developers can mess with the internal mutable structures. 
-  # We need these mutable structures because DDP sends only the minimal amount of changes.
+  # You call it with the arguments to the subscription. Then you can call start and 
+  # stop on that subscription. You can observe and observeChanges with it. You can 
+  # fetch() with it. And the nice thing is that it is also an observer, so you can
+  # call addedBefore, movedBefore, changed, and removed to update it!
 
-  class DBSubscription
-    constructor: (@subId) ->
-      i = 0
-      @observerCounter = -> i++
-      @results = []
+  subCounter = counter()
+  createSubscription = (name, args...) ->
+    subId = counter()
+    sub = new DBSubscriptionCursor(subId, name, args)
+    DB.subscriptions[subId] = sub
+    return sub
+
+  DB.reset = ->
+    debug "reset"
+    for subId, sub of DB.subscriptions
+      sub.reset()
+
+  class DBSubscriptionCursor
+    constructor: (@subId, @name, @args) ->
+      @docs = []
+      @docIds = {}
+      @dep = new Tracker.Dependency()
+      @observerCounter = counter()
       @changeObservers = {}
       @observers = {}
-      @dep = new Tracker.Dependency()
 
-    subscribe: (args) ->
-      @sub = Meteor.subscribe.apply(Meteor, args)
+    start: ->
+      @sub = Meteor.subscribe.apply(Meteor, R.insert(@name, @subId, @args))
 
     stop: ->
-      @sub.stop()
+      @sub?.stop?()
+
+    fetch: ->
+      @dep.depend()
+      return clone(@docs)
 
     observeChanges: (callbacks) ->
       # add all the initial docs
-      for doc in clone(@results)
+      for doc in clone(@docs)
         callbacks.addedBefore(doc._id, omit(["_id", doc]), null)
       i = @observerCounter()
       @changeObservers[i] = callbacks
@@ -271,7 +286,7 @@ if Meteor.isClient
     observe: (callbacks) ->
       # add all the initial docs
       length = 0
-      for doc in clone(@results)
+      for doc in clone(@docs)
         callbacks.addedAt(doc, length, null)
         length++
       i = @observerCounter()
@@ -290,97 +305,127 @@ if Meteor.isClient
       for key, observer of @observers
         observer.movedTo(doc, fromIndex, toIndex, before)
 
+    updateChanged: (newDoc, oldDoc, fields, index)->
+      for key, observer of @changeObservers
+        observer.changed(newDoc._id, fields)
+      for key, observer of @observers
+        observer.changedAt(newDoc, oldDoc, index)
+
+    updateRemoved: (doc, index) ->
+      for key, observer of @changeObservers
+        observer.removed(doc._id)
+      for key, observer of @observers
+        observer.removedAt(clone(doc), index)
+
     indexOf: (id) ->
-      findIndex(propEq('_id', id), @results)
-
-    fetch: ->
-      @dep.depend()
-      return clone(@results)
-
-    # registerStore DDP updates will call these functions
-    # to update the subscriptions.
-    addedBefore: (doc, before) ->
+      findIndex(propEq('_id', id), @docs)
+  
+    # registerStore DDP updates will call these functions to update
+    # the subscriptions.
+    addedBefore: (_id, fields, before, noUpdate=false) ->
+      doc = merge({_id}, fields)
+      @docIds[_id] = true
       if before is null
-        @results.push(doc)
-        @updateAdded(clone(doc), @results.length-1, before)
+        @docs = append(doc, @docs)
+        @updateAdded(clone(doc), @docs.length-1, before)
       else
         i = @indexOf(before)
         if i < 0 then throw new Error("Expected to find before _id, #{before}")
-        @results.splice(i,0,doc)
+        @docs = clone(@docs)
+        @docs.splice(i,0,doc)
         @updateAdded(clone(doc), i, before)
-      @dep.changed()
-    
-    movedBefore: (doc, before) ->
-      id = doc._id
+      unless noUpdate
+        @dep.changed()
+
+    movedBefore: (id, before, noUpdate=false) ->
       fromIndex = @indexOf(id)
       if fromIndex < 0 then throw new Error("Expected to find id: #{id}")
-      @results.splice(fromIndex, 1)
+      @docs = clone(@docs)
+      doc = @docs[fromIndex]
+      @docs.splice(fromIndex, 1)
       if before is null
-        @results.push(doc)
-        @updateMoved(clone(doc), fromIndex, @results.length-1, before)
+        @docs.push(doc)
+        @updateMoved(clone(doc), fromIndex, @docs.length-1, before)
       else
         toIndex = @indexOf(before)
         if toIndex < 0 then throw new Error("Expected to find before _id: #{before}")
-        @results.splice(toIndex, 0, doc)
+        @docs.splice(toIndex, 0, doc)
         @updateMoved(clone(doc), fromIndex, toIndex, before)
-      @dep.changed()
+      unless noUpdate
+        @dep.changed()
 
-    addOrMoveBefore: (doc, before) ->
-      id = doc._id
-      fromIndex = @indexOf(id)
-      if fromIndex < 0
-        @addedBefore(doc, before)
-      else
-        @movedBefore(doc, before)
-    
-    changed: (id, newDoc, oldDoc, fields) ->
+
+    changed: (id, fields, noUpdate=false) ->
+      @docs = clone(@docs)
       i = @indexOf(id)
       if i < 0 then throw new Error("Expected to find id: #{id}")
-      for key, observer of @changeObservers
-        observer.changed(id, fields)
-      for key, observer of @observers
-        observer.changedAt(newDoc, oldDoc, i)
-      @dep.changed()
-    
-    removed: (id) ->
+      oldDoc = @docs[i]
+      newDoc = changeDoc(oldDoc, fields)
+      @updateChanged(newDoc, oldDoc, fields, i)
+      unless noUpdate
+        @dep.changed()
+
+
+    removed: (id, noUpdate=false) ->
       i = @indexOf(id)
-      # if i < 0 then throw new Error("Expected to find id")
-      if i >= 0
-        [oldDoc] = @results.splice(i, 1)
-        for key, observer of @changeObservers
-          observer.removed(id)
-        for key, observer of @observers
-          observer.removedAt(clone(oldDoc), i)
+      if i < 0 then throw new Error("Expected to find id")
+      delete @docIds[id]
+      [oldDoc] = @docs.splice(i, 1)
+      @updateRemoved(oldDoc, i)
+      unless noUpdate
         @dep.changed()
 
     reset: ->
       # clear all observers
-      for doc in @results
+      for doc in @docs
         for key, observer of @changeObservers
           observer.removed(doc._id)
         for key, observer of @observers
           observer.removedAt(doc, 0)
-      @results = []
+      @docs = []
+      @docIds = {}
       @dep.changed()
 
-  DB.reset = ->
-    debug "reset"
-    DB.docs = {}
-    for subId, sub of DB.subscriptions
-      sub.reset()
 
+    # addOrMoveBefore: (doc, before) ->
+    #   id = doc._id
+    #   fromIndex = @indexOf(id)
+    #   if fromIndex < 0
+    #     @addedBefore(doc, before)
+    #   else
+    #     @movedBefore(doc, before)
+    
+    
+  
 
   # This function removes the salted position
-  parsePositions = (msg) ->
-    unless msg.fields[DB.name]
+  parsePositions = (saltedObj) ->
+    unless saltedObj
       return undefined
     positions = {}
-    for subId, value of msg.fields[DB.name]
+    for subId, value of saltedObj
       if value isnt undefined
         before = value.split('.')[1]
         if before is "null" then before = null
         positions[subId] = before
     return positions
+
+  parseDDPMsg = (msg) ->
+    id = parseId(msg.id)
+    msg.fields = fields2Obj(msg.fields)
+    positions = {}
+    cleared = {}
+    subObj = msg.fields[DB.name]
+    if subObj
+      for subId, value of subObj
+        if value is undefined
+          cleared[subId] = true
+        else
+          before = value.split('.')[1]
+          if before is "null" then before = null
+          positions[subId] = before
+    fields = omit([DB.name], fields)
+    return {id, fields, positions, cleared}
 
   # Get the DDP connection so we can register a store and listen to messages
   DB.connection = if Meteor.isClient then Meteor.connection else Meteor.server
@@ -388,6 +433,13 @@ if Meteor.isClient
   # I'm simply copying how MDG does it with Mongo.
   # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp-client/livedata_connection.js#L1343
   # This is poorly/un- documented...
+  # This how we deal with DDP messages that update the data on the client.
+
+  findDoc = (id) ->
+    for subId, sub in DB.subscriptions
+      if sub.docIds[id]
+        return clone(sub.docs[sub.indexOf(id)])
+    return undefined
 
   DB.connection.registerStore DB.name,
     beginUpdate: (batchSize, reset) ->
@@ -398,69 +450,42 @@ if Meteor.isClient
         DB.reset()
 
     update: (msg) ->
-      id = parseId(msg.id)
-      doc = DB.docs[id]
-      # unwrap the fields.
-      msg.fields = fields2Obj(msg.fields)
-
       debug("msg", msg)
 
-      # this is a pseudo-ddp message for latency compensation
-      # if msg.msg is 'replace'
-      #   {replace} = msg
-      #   if not replace
-      #     if doc
-      #       delete DB.docs[id]
-      #   else if not doc
-      #     DB.docs[id] = replace
-      #   else
-      #     extendDeep(doc, replace)
-      #   return
+      {id, fields, positions, cleared} = parseDDPMsg(msg)
+      
 
       if msg.msg is 'added'
-        if doc then throw new Error("Expected not to find a document already present for an add")
-        positions = parsePositions(msg)
-        doc = omit([DB.name], msg.fields)
-        doc._id = id
-        DB.docs[id] = doc
-        if positions
-          for subId, before of positions
-            # pass the doc by reference!
-            DB.subscriptions[subId].addedBefore(doc, before)
+        for subId, before of positions
+          DB.subscriptions[subId].addedBefore(id, fields, before)
         return
 
+      # if it simply cleared a publication, this should come though
+      # as a change. removed means totally removed.[]
       if msg.msg is 'removed'
-        if not doc then throw new Error("Expected to find a document already present for removed")
-        delete DB.docs[id]
-        # if it simply cleared a publication, this should come though
-        # as a change. removed means totally removed.
         for key, sub of DB.subscriptions
           sub.removed(id)
         return
 
       if msg.msg is 'changed'
-        if not doc then throw new Error("Expected to find a document to change")
-        
-        # if a sub clears subscription
-        if msg.fields[DB.name]
-          for subId, value of msg.fields[DB.name]
-            if value is undefined
-              DB.subscriptions[subId].removed(id)
+        # remove cleared subscriptions
+        for subId, value of cleared
+          DB.subscriptions[subId].removed(id)
 
-        positions = parsePositions(msg)
-        if positions
-          for subId, before of positions
-            # this could potentially be adding OR moving the document
-            DB.subscriptions[subId].addOrMoveBefore(doc, before)
+        # if the document exists in a different subscription
+        # then when we add to another subscription, it will simply
+        # be a change.
+        for subId, before of positions
+          sub = DB.subscriptions[subId]
+          if sub.docIds[id]
+            sub.movedBefore(id, before)
+          else
+            doc = findDoc(id)
+            sub.addedBefore(id, omit(['_id'], doc) before)
 
-        fields = omit([DB.name], msg.fields)
         if R.keys(fields).length > 0
-          oldDoc = clone(doc)
-          extendDeep(doc, fields2Obj(fields))
-          # undefined values are effectively unsetting the key
-          deleteUndefined(DB.docs[id])
-          newDoc = clone(doc)
-          DB.subscriptions[subId].changed(id, newDoc, oldDoc, fields)
+          for subId, sub of DB.subscriptions
+            if sub.docIds[id]
         return
 
       throw new Error("I don't know how to deal with this message");
@@ -477,21 +502,4 @@ if Meteor.isClient
     #   return self._collection.retrieveOriginals();
     # }
 
-  # The client must tell the server a subscription id. This is used to sort out
-  # the documents coming in over DDP. We'll use a simple counter to generate ids.
 
-  pubCount = 0
-  subCounter = -> pubCount++
-
-  DB.subscribe = (name, args...) ->
-    subId = subCounter()
-
-    collection = new DBSubscription(subId)
-    DB.subscriptions[subId] = collection
-
-    args.unshift(subId)
-    args.unshift(name)
-    sub = Meteor.subscribe.apply(Meteor, args)
-    collection.sub = sub
-
-    return collection

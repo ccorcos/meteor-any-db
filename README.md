@@ -1,7 +1,12 @@
 # TODO
 
-- latency compensation is a bit trickier than it seems
+- you should be able to create an observer before subscribing.
+- subscriptions need to be immutable. its going to get out of hand
+  it will be slightly less efficient but it will be worth it.
+- Model and DB are different.
 
+- latency compensation is a bit trickier than it seems
+- 
 
 - simple chat application
 - latency compensation
