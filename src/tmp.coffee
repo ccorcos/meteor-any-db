@@ -67,13 +67,4 @@ class DBModel
     @sub.fetch.apply(@sub, arguments)
 
 
-
-
-
-
-# sub = DBSubscriptionCursor(listId)
-# sub.observeChanges
-# sub.start
-# sub.stop
-
     

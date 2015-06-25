@@ -10,44 +10,6 @@ if Meteor.isServer
       ORDER BY msg.createdAt DESC
     """
 
-
-createModel 'msgs'
-  pollAndDiff: 10 # seconds
-  query: () ->
-    Neo4j.query """
-      MATCH (msg:MSG)
-      RETURN msg
-      ORDER BY msg.createdAt DESC
-    """
-  insertDB: (id, text) ->
-    check(id, String)
-    check(text, String)
-    msg = {
-      _id: id
-      text: text
-      createdAt: Date.now()
-    }
-    Neo4j.query """
-      CREATE (:MSG #{Neo4j.stringify(msg)})
-    """
-  insertSub: (id, text) ->
-    check(id, String)
-    check(text, String)
-    action = (list) ->
-      msg = {
-        _id: id
-        text: text
-        createdAt: Date.now()
-      }
-      R.insert(msg, list)
-    undo = (list) ->
-      R.filter(R.complement(R.propEq('_id', id)), list)
-    return {action, undo}
-
-
-
-
-
 Meteor.methods
   newMsg: (id, text) ->
     check(text, String)
@@ -57,6 +19,7 @@ Meteor.methods
       createdAt: Date.now()
     }
     if Meteor.isServer
+      # this worked in a previous commit
       
     if Meteor.isClient
       msgs.insert(msg)

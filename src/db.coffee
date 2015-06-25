@@ -13,7 +13,14 @@ debug = console.log.bind(console)
   propEq
 } = R
 
+remember = (f) ->
+  result = null
+  ->
+    unless result
+      result = f.apply(null, arguments)
+    return result
 
+# A simple counter that doesn't overflow.
 counter = () ->
   i = 0
   ->
@@ -36,26 +43,19 @@ mergeDeep = (dest, obj) ->
       newDest[k] = clone(v)
   return newDest
 
-# extendDeep = (dest, obj) ->
-#   for k,v of obj
-#     if isPlainObject(v)
-#       dest[k] = extendDeep(dest[k] or {}, v)
-#     else
-#       dest[k] = v
-#   return dest
 
 # DDP "change" messages will set fields to undefined if they are meant to be unset.
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L172
-# So we can call `extendDeep` then `deleteUndefined` update changes.
-deleteUndefined = (x) ->
-  obj = clone(x)
+deleteUndefined = (doc) ->
+  obj = clone(doc)
   for k,v of obj
     if isPlainObject(v)
-      deleteUndefined(v)
+      obj[k] = deleteUndefined(v)
     else if v is undefined
       delete obj[k]
   return obj
 
+# Given a document and some change fields, this will update the doc
 changeDoc = (doc, fields) ->
   deleteUndefined(mergeDeep(doc, fields))
 
@@ -65,6 +65,11 @@ changeDoc = (doc, fields) ->
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L179
 # This function simply translates an object of "fields" with '.' separated keys for nested
 # fields and translates that into a nested object.
+# It appears DDP doesnt do very well with nested key-values.
+# https://forums.meteor.com/t/how-to-publish-nested-fields-that-arent-arrays/6007
+# https://github.com/meteor/meteor/issues/4615
+# We will wrap objects into fields in the publication and unwrap back into
+# objects in the subscriptions.
 
 fields2Obj = (fields) ->
   dest = {}
@@ -84,10 +89,6 @@ fields2Obj = (fields) ->
       prevObj[keys.pop()] = value
       extendDeep(dest, obj)
   return dest
-
-# It appears DDP doesnt do very well with nested key-values.
-# https://forums.meteor.com/t/how-to-publish-nested-fields-that-arent-arrays/6007
-# https://github.com/meteor/meteor/issues/4615
 
 obj2Fields = (obj) ->
   dest = {}
@@ -131,7 +132,6 @@ DB.name = 'ANY_DB'
 if Meteor.isServer
   
   salter = counter()
-
   # sets the position of the doc for the subId to the fields object.
   addPosition = R.curry (subId, before, fields) ->
     # we have to salt the position value so merge-box doesnt kill
@@ -143,12 +143,10 @@ if Meteor.isServer
   createObserver = (pub, subId) ->
     # DDP doesnt support ordered document collections yet
     # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
-    # so we don't have addedBefore. However, we could be doing some advanced sorting in Neo4j or something
-    # so we'll want to support that. Thus we'll add a key, DB.name to all position-based callbacks as a shim.
-    # The format of the message will be the subscription id and the position separated by a dot.
-
-    # The observer needs to publish to the correct database name
-    # and send the subId and position.
+    # so we don't have addedBefore. We could be doing some advanced 
+    # sorting in Neo4j or something so we'll want to support that. 
+    # Thus we'll add a key, DB.name to all position-based callbacks as a shim.
+    # The key will have the subId and the position separated by a dot.
     addedBefore: (id, fields, before) ->
       fields = R.pipe(
         addPosition(subId, before)
@@ -183,50 +181,41 @@ if Meteor.isServer
 
     Meteor.publish name, (subId, args...) ->
       pub = this
-
+      docs = []
+      observer = createObserver(pub, subId)
       # pass the arguments to the query function
       poll = () -> apply(query, args)
-
-      observer = createObserver(pub, subId)
-      
-      docs = []
-
       # MDG already did the hard work for us :)
       pollAndDiff = ->
         newDocs = poll()
         DiffSequence.diffQueryChanges(true, docs, newDocs, observer)
         docs = newDocs
-
       # Initial poll and tell the client that the subscription is ready
       pollAndDiff()
+      # Tell the client that the subscription is ready
       pub.ready()
-
       # Set the poll-and-diff interval
       intervalId = Meteor.setInterval(pollAndDiff, ms)
-
       # clean up
       pub.onStop ->
         Meteor.clearInterval(intervalId)
 
+  # If you can implement observeChanges, then you can publish a cursor
   DB.publishCursor = (name, getCursor) ->
     Meteor.publish name, (subId, args...) ->
       pub = this
       cursor = apply(getCursor, args)
       observer = createObserver(pub, subId)
-      cursor.observeChanges(observer)
+      handle = cursor.observeChanges(observer)
       pub.ready()
+      pub.onStop ->
+        handle.stop()
 
   DB.publish = (name, msOrFunc) ->
     if isNumber(msOrFunc)
       DB.pollAndDiffPublish.apply(DB, arguments)
     else
       DB.publishCursor.apply(DB, arguments)
-
-
-
-
-
-
 
 
 # We should be able to subscribe from server to server as well
@@ -386,18 +375,6 @@ if Meteor.isClient
       @docIds = {}
       @dep.changed()
 
-
-    # addOrMoveBefore: (doc, before) ->
-    #   id = doc._id
-    #   fromIndex = @indexOf(id)
-    #   if fromIndex < 0
-    #     @addedBefore(doc, before)
-    #   else
-    #     @movedBefore(doc, before)
-    
-    
-  
-
   # This function removes the salted position
   parsePositions = (saltedObj) ->
     unless saltedObj
@@ -410,6 +387,8 @@ if Meteor.isClient
         positions[subId] = before
     return positions
 
+  # This function parses the id, the positions, 
+  # any cleared subscriptions, and the fields.
   parseDDPMsg = (msg) ->
     id = parseId(msg.id)
     msg.fields = fields2Obj(msg.fields)
@@ -435,6 +414,7 @@ if Meteor.isClient
   # This is poorly/un- documented...
   # This how we deal with DDP messages that update the data on the client.
 
+  # Find a certain document by id, whereever it may be.
   findDoc = (id) ->
     for subId, sub in DB.subscriptions
       if sub.docIds[id]
@@ -454,38 +434,44 @@ if Meteor.isClient
 
       {id, fields, positions, cleared} = parseDDPMsg(msg)
       
-
       if msg.msg is 'added'
         for subId, before of positions
           DB.subscriptions[subId].addedBefore(id, fields, before)
         return
 
-      # if it simply cleared a publication, this should come though
-      # as a change. removed means totally removed.[]
+      # this means entirely removed from the client
       if msg.msg is 'removed'
         for key, sub of DB.subscriptions
           sub.removed(id)
         return
 
       if msg.msg is 'changed'
-        # remove cleared subscriptions
+        # remove cleared subscriptions which come in as a subId
+        # set to undefined
         for subId, value of cleared
           DB.subscriptions[subId].removed(id)
 
         # if the document exists in a different subscription
         # then when we add to another subscription, it will simply
-        # be a change.
+        # be a change. This is less efficient that having a global
+        # set of documents that are kept in sync with the subscriptions
+        # by reference. But its totally worth it to not having immutable 
+        # data. lookup is a simply efficieny optimization like memoize.
+        lookup = remember(findDoc)
         for subId, before of positions
           sub = DB.subscriptions[subId]
+          # if the document exists, then this is a move.
+          # otherwise, we interpret it as an add.
           if sub.docIds[id]
             sub.movedBefore(id, before)
           else
-            doc = findDoc(id)
+            doc = lookup(id)
             sub.addedBefore(id, omit(['_id'], doc) before)
 
         if R.keys(fields).length > 0
           for subId, sub of DB.subscriptions
             if sub.docIds[id]
+              sub.changed(id, fields)
         return
 
       throw new Error("I don't know how to deal with this message");
