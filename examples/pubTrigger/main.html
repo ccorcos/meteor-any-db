@@ -1,0 +1,10 @@
+<body>
+  {{>main}}
+</body>
+
+<template name="main">
+  {{#with count}}
+    {{value}}
+  {{/with}}
+  <button>server pub</button>
+</template>
