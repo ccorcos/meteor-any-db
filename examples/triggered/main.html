@@ -1,0 +1,12 @@
+<body>
+  {{>main}}
+</body>
+
+<template name="main">
+  <button>refresh</button>
+  <ul>
+    {{#each numbers}}
+      <li>{{value}}</li>
+    {{/each}}
+  </ul>
+</template>
