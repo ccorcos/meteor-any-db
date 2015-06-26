@@ -1,12 +1,15 @@
 if Meteor.isServer
   @Neo4j = new Neo4jDB()
 
-  DB.publish 'msgs', 10000, () ->
-    Neo4j.query """
-      MATCH (msg:MSG)
-      RETURN msg
-      ORDER BY msg.createdAt DESC
-    """
+  DB.publish 
+    name: 'msgs'
+    ms: 10000
+    query: () ->
+      Neo4j.query """
+        MATCH (msg:MSG)
+        RETURN msg
+        ORDER BY msg.createdAt DESC
+      """
 
 if Meteor.isClient
   # The arguments are the same as you're used to with

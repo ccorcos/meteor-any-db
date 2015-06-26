@@ -165,7 +165,7 @@ if Meteor.isServer
       pub.added(DB.name, id, fields)
       debug "added", subId, id, fields
     movedBefore: (id, before) ->
-      fields = addPosition(subId, null, {})
+      fields = addPosition(subId, before, {})
       pub.changed(DB.name, id, fields)
       debug "moved", subId, id, fields
     changed: (id, fields) ->
@@ -177,8 +177,16 @@ if Meteor.isServer
 
   # to trigger a poll and diff
   DB.triggers = {}
+  DB.dependencies = {}
 
-  DB.pollAndDiffPublish = (name, ms, query) ->
+  registerDependencies = (pub, deps, subId, pollAndDiff) ->
+    for dep in deps
+      unless DB.dependencies[dep]
+        DB.dependencies[dep] = {}
+      DB.dependencies[dep][subId] = pollAndDiff
+      pub.onStop -> delete DB.dependencies[subId]
+
+  DB.pollAndDiffPublish = (name, ms, query, depends=[]) ->
     # name:  name of the publication, so you can do DB.subscribe(name, args...)
     # ms:    millisecond interval to poll-and-diff.
     #        if ms <= 0 then we resort to triggered publishing
@@ -189,8 +197,9 @@ if Meteor.isServer
     # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L302
     # This is how we'll publish documents.
 
-    Meteor.publish name, (subId, args...) ->
+    Meteor.publish name, (args) ->
       pub = this
+      subId = pub._subscriptionId
       docs = []
       observer = createObserver(pub, subId)
       # pass the arguments to the query function
@@ -204,6 +213,7 @@ if Meteor.isServer
       pollAndDiff()
       # Tell the client that the subscription is ready
       pub.ready()
+      registerDependencies(pub, depends, subId, pollAndDiff)
       if ms > 0
         # Set the poll-and-diff interval
         intervalId = Meteor.setInterval(pollAndDiff, ms)
@@ -217,8 +227,9 @@ if Meteor.isServer
 
   # If you can implement observeChanges, then you can publish a cursor
   DB.publishCursor = (name, getCursor) ->
-    Meteor.publish name, (subId, args...) ->
+    Meteor.publish name, (args) ->
       pub = this
+      subId = pub._subscriptionId
       cursor = apply(getCursor, args)
       observer = createObserver(pub, subId)
       handle = cursor.observeChanges(observer)
@@ -226,13 +237,15 @@ if Meteor.isServer
       pub.onStop ->
         handle.stop()
 
-  DB.publish = (name, msOrFunc) ->
-    if isNumber(msOrFunc)
-      DB.pollAndDiffPublish.apply(DB, arguments)
+  DB.publish = ({name, query, depends, ms, cursor}) ->
+    if cursor
+      DB.publishCursor(name, cursor)
     else
-      DB.publishCursor.apply(DB, arguments)
+      DB.pollAndDiffPublish(name, ms, query, depends)
+      
 
-
+# Worst case scenario, a hacker may get lucky and trigger a 
+# refresh on someone elses subscription.
 Meteor.methods
   triggerSub: (subId) ->
     if Meteor.isServer
@@ -253,11 +266,8 @@ if Meteor.isClient
   # fetch() with it. And the nice thing is that it is also an observer, so you can
   # call addedBefore, movedBefore, changed, and removed to update it!
 
-  subCount = counter()
   DB.createSubscription = (name, args...) ->
-    subId = subCount()
-    sub = new DBSubscriptionCursor(subId, name, args)
-    DB.subscriptions[subId] = sub
+    sub = new DBSubscriptionCursor(name, args)
     return sub
 
   DB.reset = ->
@@ -266,7 +276,7 @@ if Meteor.isClient
       sub.reset()
 
   class DBSubscriptionCursor
-    constructor: (@subId, @name, @args) ->
+    constructor: (@name, @args=[]) ->
       @docs = []
       @docIds = {}
       @dep = new Tracker.Dependency()
@@ -276,7 +286,10 @@ if Meteor.isClient
       @undos = {}
 
     trigger: ->
-      Meteor.call('triggerSub', @subId)
+      if @subId
+        Meteor.call('triggerSub', @subId)
+      else
+        throw new Error("You must start the subscription before you trigger it.")
 
     addUndo: (id, undo) ->
       unless @undos[id]
@@ -287,11 +300,10 @@ if Meteor.isClient
       @undos[id]?.pop()?()
 
     start: (onReady) ->
-      subArgs = pipe(
-        concat([@name, @subId]),
-        append(onReady)
-      )(@args)
-      @sub = Meteor.subscribe.apply(Meteor, subArgs)
+      subArgs = [@name, @args, onReady]
+      @sub = sub = Meteor.subscribe.apply(Meteor, subArgs)
+      @subId = subId = sub.subscriptionId
+      DB.subscriptions[subId] = this
 
     stop: ->
       @sub?.stop?()

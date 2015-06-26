@@ -1,6 +1,8 @@
 if Meteor.isServer
   @Msgs = new Mongo.Collection('msgs')
-  DB.publish 'msgs', -> Msgs.find({}, {sort:{createdAt:-1}})
+  DB.publish 
+    name: 'msgs'
+    cursor: -> Msgs.find({}, {sort:{createdAt:-1}})
 
 if Meteor.isClient
   # The arguments are the same as you're used to with

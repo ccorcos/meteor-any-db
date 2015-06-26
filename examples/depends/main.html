@@ -1,0 +1,28 @@
+<body>
+  {{>main}}
+</body>
+
+<template name="main">
+  <div class="wrapper">
+    <div class="left">
+      <div class="row newRoom">
+        NEW ROOM
+      </div>
+      {{#each rooms}}
+        <div class="row room">
+          {{_id}}
+        </div>
+      {{/each}}
+    </div>
+    <div class="right">
+      <div class="row">
+        <input type="text" class="newMsg">
+      </div>
+      {{#each msgs}}
+        <div class="row msg">
+          {{text}}{{#if unverified}}*{{/if}}
+        </div>
+      {{/each}}
+    </div>
+  </div>
+</template>

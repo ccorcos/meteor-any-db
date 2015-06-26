@@ -110,26 +110,32 @@ if Meteor.isServer
 
   # This one has 5 docs and reorders them
   statDocs = R.map(makeDoc, [0...5])
-  DB.publish 'stat', 1000, () ->
-    statDocs = reorderOne(statDocs)
-    console.log "statDocs", R.pluck('value', statDocs)
-    return statDocs
+  DB.publish 
+    name: 'stat'
+    ms: 1000, 
+    query: () ->
+      statDocs = reorderOne(statDocs)
+      console.log "statDocs", R.pluck('value', statDocs)
+      return statDocs
 
   # This one will have adding removing and reordering
   changingDocs = R.map(makeDoc, [3,4,5,6,7])
-  DB.publish 'changing', 1000, () ->
-    console.log "changingDocs", R.pluck('value', changingDocs)
-    what = Random.choice([1,2,3])
-    howMany = Random.choice([1,2,3])
-    if what is 1
-      changingDocs = reorderN(howMany, changingDocs)
-      return changingDocs
-    if what is 2
-      changingDocs = removeN(howMany, changingDocs)
-      return changingDocs
-    if what is 3
-      changingDocs = addN(howMany, changingDocs)
-      return changingDocs
+  DB.publish 
+    name: 'changing'
+    ms: 1000
+    query: () ->
+      console.log "changingDocs", R.pluck('value', changingDocs)
+      what = Random.choice([1,2,3])
+      howMany = Random.choice([1,2,3])
+      if what is 1
+        changingDocs = reorderN(howMany, changingDocs)
+        return changingDocs
+      if what is 2
+        changingDocs = removeN(howMany, changingDocs)
+        return changingDocs
+      if what is 3
+        changingDocs = addN(howMany, changingDocs)
+        return changingDocs
 
 if Meteor.isClient
   @stat = DB.createSubscription('stat')    

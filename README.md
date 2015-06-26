@@ -1,5 +1,12 @@
 # TODO
 
+- depends happens in publish, not in subscribe 
+  and subId comes from the sub itself.
+
+
+- triggering is somewhat insecure...
+- lets get rid of subId for subscriptionId and then create dependencies
+
 - chatroom with dependencies and instant update triggering!
 
 - documentation
