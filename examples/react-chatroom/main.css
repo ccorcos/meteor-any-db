@@ -1,0 +1,20 @@
+.wrapper {
+  display: flex;
+}
+.left {
+  flex: 0 0 250px;
+  text-align: center;
+}
+.right {
+  flex: 1 1 0;
+}
+
+.room.selected {
+  background-color: blue;
+  color: white;
+  border-radius: 5px;
+}
+
+.row {
+  padding:5px;
+}
