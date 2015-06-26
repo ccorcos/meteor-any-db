@@ -5,24 +5,33 @@
 <template name="main">
   <div class="wrapper">
     <div class="left">
-      <div class="row newRoom">
-        NEW ROOM
+      <div class="row">
+        <button class="newRoom">NEW ROOM</button>
       </div>
       {{#each rooms}}
-        <div class="row room">
-          {{_id}}
-        </div>
+        {{#if isCurrentRoom _id}}
+          <div class="row room selected">
+            {{_id}}{{#if unverified}}*{{/if}}
+          </div>
+        {{else}}
+          <div class="row room">
+            {{_id}}{{#if unverified}}*{{/if}}
+          </div>
+        {{/if}}
       {{/each}}
     </div>
     <div class="right">
-      <div class="row">
-        <input type="text" class="newMsg">
-      </div>
-      {{#each msgs}}
-        <div class="row msg">
-          {{text}}{{#if unverified}}*{{/if}}
+      {{#if currentRoom}}
+        <div class="row">
+          <input type="text">
+          <button class="newMsg">NEW MSG</button>
         </div>
-      {{/each}}
+        {{#each msgs}}
+          <div class="row msg">
+            {{text}}{{#if unverified}}*{{/if}}
+          </div>
+        {{/each}}
+      {{/if}}
     </div>
   </div>
 </template>

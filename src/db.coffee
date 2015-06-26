@@ -179,14 +179,20 @@ if Meteor.isServer
   DB.triggers = {}
   DB.dependencies = {}
 
-  registerDependencies = (pub, deps, subId, pollAndDiff) ->
-    for dep in deps
-      unless DB.dependencies[dep]
-        DB.dependencies[dep] = {}
-      DB.dependencies[dep][subId] = pollAndDiff
-      pub.onStop -> delete DB.dependencies[subId]
+  registerDeps = (pub, keys=[], subId, pollAndDiff) ->
+    for key in keys
+      unless DB.dependencies[key]
+        DB.dependencies[key] = {}
+      DB.dependencies[key][subId] = pollAndDiff
+      pub.onStop -> delete DB.dependencies[key][subId]
 
-  DB.pollAndDiffPublish = (name, ms, query, depends=[]) ->
+  DB.triggerDeps = (key) ->
+    deps = DB.dependencies[key]
+    if deps
+      for subId, func of deps
+        func()
+
+  DB.pollAndDiffPublish = (name, ms, query, depends) ->
     # name:  name of the publication, so you can do DB.subscribe(name, args...)
     # ms:    millisecond interval to poll-and-diff.
     #        if ms <= 0 then we resort to triggered publishing
@@ -213,7 +219,9 @@ if Meteor.isServer
       pollAndDiff()
       # Tell the client that the subscription is ready
       pub.ready()
-      registerDependencies(pub, depends, subId, pollAndDiff)
+      if depends
+        deps = depends.apply({}, args)
+        registerDeps(pub, deps, subId, pollAndDiff)
       if ms > 0
         # Set the poll-and-diff interval
         intervalId = Meteor.setInterval(pollAndDiff, ms)

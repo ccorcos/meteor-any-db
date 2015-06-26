@@ -9,6 +9,8 @@ if Meteor.isServer
         RETURN room
         ORDER BY room.createdAt DESC
       """
+    depends: ->
+      ['chatrooms']
 
   DB.publish
     name: 'msgs'
@@ -24,28 +26,46 @@ if Meteor.isServer
 
 if Meteor.isClient
   Session.setDefault('roomId', null)
-  Session.setDefault('msgs', null)
+  Session.setDefault('msgs', [])
 
-  @rooms = DB.createSubscription('chatrooms')
+  @subs = {}
+  subs.rooms = DB.createSubscription('chatrooms')
 
+  # This step is a little funky to be honest. It would be
+  # super convenient if we could say Session.get('msgs', subs.msgs)
+  # but that will rip off any functions including observeChanges.
+  # Thus we need another autorun to watch changes
   Template.main.onRendered ->
+    # start the rooms immediately
     @autorun -> 
-      rooms.start()
+      subs.rooms.start()
+    # watch for the roomId to change
     @autorun -> 
-      msgs = DB.createSubscription('msgs', Session.get('roomId'))
-      Session.set('msgs', msgs)
+      roomId = Session.get('roomId')
+      if roomId
+        subs.msgs = DB.createSubscription('msgs', roomId)
+        # subscription will automatically be stopped since 
+        # we're in an autorun
+        subs.msgs.start()
+        # another autorun to watch for changes
+        Tracker.autorun ->
+          Session.set('msgs', subs.msgs.fetch())
 
   Template.main.helpers
-    rooms: () -> rooms
+    rooms: () -> subs.rooms
     msgs: () -> Session.get('msgs')
+    isCurrentRoom: (roomId) -> Session.equals('roomId', roomId)
+    currentRoom: (roomId) -> Session.get('roomId')
 
   Template.main.events
+    'click .room': ->
+      Session.set('roomId', @_id)
     'click .newRoom': (e,t) ->
       Meteor.call('newRoom', Random.hexString(24))
     'click .newMsg': (e,t) ->
-      elem = t.find('input.msg')
+      elem = t.find('input')
       input = elem.value
-      Meteor.call('newMsg', Random.hexString(24), input)
+      Meteor.call('newMsg', Session.get('roomId'), Random.hexString(24), input)
       elem.value = ''
 
 Meteor.methods
@@ -57,16 +77,18 @@ Meteor.methods
     }
     if Meteor.isServer
       Neo4j.query("CREATE (:ROOM #{Neo4j.stringify(room)})")
+      DB.triggerDeps('chatrooms')
     else
       fields = R.pipe(
         R.assoc('unverified', true), 
         R.omit(['_id'])
       )(room)
-      rooms.addedBefore(id, fields, rooms.docs[0]?._id or null)
-      msgs.addUndo id, -> msgs.removed(id)
+      subs.rooms.addedBefore(id, fields, subs.rooms.docs[0]?._id or null)
+      subs.rooms.addUndo id, -> subs.rooms.removed(id)
       Session.set('roomId', id)
+      
 
-  newMsg: (id, text) ->
+  newMsg: (roomId, id, text) ->
     check(id, String)
     check(text, String)
     msg = {
@@ -75,11 +97,15 @@ Meteor.methods
       createdAt: Date.now()
     }
     if Meteor.isServer
-      Neo4j.query("CREATE (:MSG #{Neo4j.stringify(msg)})")
+      Neo4j.query """
+        MATCH (room:ROOM {_id:"#{roomId}"})
+        CREATE (room)-[:OWNS]->(:MSG #{Neo4j.stringify(msg)})
+      """
+      DB.triggerDeps("chatroom:#{roomId}")
     else
       fields = R.pipe(
         R.assoc('unverified', true), 
         R.omit(['_id'])
       )(msg)
-      msgs.addedBefore(id, fields, msgs.docs[0]?._id or null)
-      msgs.addUndo id, -> msgs.removed(id)
+      subs.msgs.addedBefore(id, fields, subs.msgs.docs[0]?._id or null)
+      subs.msgs.addUndo id, -> subs.msgs.removed(id)
