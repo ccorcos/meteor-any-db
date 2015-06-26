@@ -31,23 +31,17 @@ if Meteor.isClient
   @subs = {}
   subs.rooms = DB.createSubscription('chatrooms')
 
-  # This step is a little funky to be honest. It would be
-  # super convenient if we could say Session.get('msgs', subs.msgs)
-  # but that will rip off any functions including observeChanges.
-  # Thus we need another autorun to watch changes
   Template.main.onRendered ->
-    # start the rooms immediately
-    @autorun -> 
-      subs.rooms.start()
+    # subscribe to the chatrooms
+    @autorun -> subs.rooms.start()
     # watch for the roomId to change
     @autorun -> 
       roomId = Session.get('roomId')
       if roomId
+        # start a subscription for the msgs of that room
         subs.msgs = DB.createSubscription('msgs', roomId)
-        # subscription will automatically be stopped since 
-        # we're in an autorun
         subs.msgs.start()
-        # another autorun to watch for changes
+        # watch for changes to the messages
         Tracker.autorun ->
           Session.set('msgs', subs.msgs.fetch())
 

@@ -177,6 +177,7 @@ if Meteor.isServer
 
   # to trigger a poll and diff
   DB.triggers = {}
+  # keep track of publication dependencies
   DB.dependencies = {}
 
   registerDeps = (pub, keys=[], subId, pollAndDiff) ->
