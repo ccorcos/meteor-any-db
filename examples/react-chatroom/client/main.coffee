@@ -104,14 +104,17 @@ Meteor.startup ->
     # console.log "SELECT ROOM", roomId
     autorun?.stop?()
     if roomId
-      Msgs[roomId] = msgs = DB.createSubscription('msgs', roomId)
-      msgs.start()
+      msgs = Msgs[roomId]
+      unless msgs
+        Msgs[roomId] = msgs = DB.createSubscription('msgs', roomId)
       autorun = Tracker.autorun ->
-        # console.log "MSGS CHANGED"
-        evolveState
-          msgs: msgs.fetch()
-          roomId: roomId
-        render()
+        msgs.start()
+        Tracker.autorun ->
+          # console.log "MSGS CHANGED"
+          evolveState
+            msgs: msgs.fetch()
+            roomId: roomId
+          render()
     else
       evolveState
         msgs: []

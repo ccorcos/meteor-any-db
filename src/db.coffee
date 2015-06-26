@@ -313,9 +313,13 @@ if Meteor.isClient
       @sub = sub = Meteor.subscribe.apply(Meteor, subArgs)
       @subId = subId = sub.subscriptionId
       DB.subscriptions[subId] = this
+      # cleanup when running in an autorun
+      if Tracker.currentComputation
+        Tracker.onInvalidate =>
+          @reset()
 
     stop: ->
-      @sub?.stop?()
+      @reset()
 
     fetch: ->
       @dep.depend()
@@ -426,6 +430,9 @@ if Meteor.isClient
         @dep.changed()
 
     reset: ->
+      if @sub
+        @sub.stop()
+        delete DB.subscriptions[@subId]
       # clear all observers
       for doc in @docs
         for key, observer of @changeObservers
@@ -434,8 +441,10 @@ if Meteor.isClient
           observer.removedAt(doc, 0)
       @docs = []
       @docIds = {}
-      @dep.changed()
       @undos = {}
+      @dep.changed()
+
+      
 
   # This function removes the salted position
   parsePositions = (saltedObj) ->
