@@ -1,38 +1,24 @@
-# TODO
+# Meteor Any-db
 
-- depends happens in publish, not in subscribe 
-  and subId comes from the sub itself.
+This package allows you to use Meteor with any database or data source. Rather than have a mini-database on the client, we simply have a subscription/cursor object that represents the results of a server-side query. With the help of merge-box, we're still only sending the minimal amount of data to the client. 
 
+The most basic implementation is simply polling and diffing the results of a query over some interval for each user's subscription. Note that this query can return arbitary data -- data from a database query, or some 3rd party REST API.
 
-- triggering is somewhat insecure...
-- lets get rid of subId for subscriptionId and then create dependencies
+You can also turn off polling and simply trigger a "refresh" from the client. Rather than using a `Meteor.method` to get data from the server, this will efficiently sent only the changes down to the client.
 
-- chatroom with dependencies and instant update triggering!
+You can also define dependencies for your publications so that you can trigger those publications to refresh elsewhere in your code (typically on a database write). This gives you instantaneous reactivity (check out the [chatroom](/examples/chatroom/) example built with Neo4j).
 
-- documentation
-  - client initiated update as opposed to poll and diff
-  - neo4j and mongo examples
+Lastly, this package supports any datasource that supports [`Cursor.observeChanges`](observeChanges). Thus, you can use it with Mongo right now, and it could easily support other databases with realtime changefeeds.
 
-- postgresql example
-- PostgresQL, Neo4j, Mongo, Rethink with changefeeds
+**Help**
 
- 
-- homebrewed dependency publication dependency tracking
-- subscriptions from server to server
+I could use some help building database drivers for other databases. This gets a little tricky when it comes to wrapping their API into fibers. I've been trying to do this with RethinkDB and failing. 
 
+## How it works
 
-- All I had to do to change this chat app from Neo4j to Mongo was change 3 lines of code.
-- only needed 10 lines of code for latency compensation
-- no fine grained reactiviity cursors, use observeChanges or observe for now
-- 11 more lines of code and we can trigger them from the client.
+### Motivation
 
-
-
-# How it works
-
-## Motivation
-
-(Please help with references and corrections!)
+(Please help with references and corrections. I could be wrong about some of these things. I'm just going off the top of my head...)
 
 First, let me go over the current state of Mongo integration with Meteor.
 
@@ -59,58 +45,148 @@ once in `Meteor.publish` and once in `Template.helpers`. Also, with more complic
 database queries you might run with Neo4j, there's no way to replicate these queries 
 on the client without the whole corpus of data (e.g. min-flow/max-cut and other graph queries).
 
-## Implementation
+### Implementation
 
-### Server
+#### Server
 
-This database API is fundamentally simple. `DB.publish(name, ms, query)` will 
-poll-and-diff a `query` function every `ms` milliseconds and publish the results
-using `Meteor.publish`. `query` must return a collection (array of objects) and every
-document must contain an `_id` key.
+Each publication accepts a query function which must return a collection of documents that must contain a unique `_id` field. [DDP does not yet support ordered queries](DDP_spec) so every DDP message related to `addedBefore` or `movedBefore` has an additional key specifying which subscription and which position.
 
-Under the hood, `DB.publish` does a couple nice things for you. When it creates a
-Meteor publication, it also gets a subscription id, `subId`, from the client to identify
-which subscription this document belongs to.
-Also, [DDP does not yet support ordered queries](1) and most database queries will likely
-need to be ordered nso we need a work around. 
-Every DDP message related to `addedBefore` or `movedBefore` takes an additional key
-specififying both the `subId` and `before` in a '.' separated string. This is a super 
-convenient workaround. Merge-box will prevent the same data from being sent over
-twice so sending these values in different keys means that the `subId` will only be sent
-once, but we need that value so we know what subscription the order refers to. Combining
-them in the same key is a nice elegant way of solving this issue. 
+Publications can also specify dependency keys which will trigger them to update immediately when those dependencies are triggered.
 
-#### Improvements
+#### Client
 
-Later, I think it would be awesome if we could support some dependency tracking so that
-some publications will automatically poll-and-diff immediately if certain criteria are met
-during a write from a `Meteor.method`. This shouldn't be too hard, but it needs to be well
-thought-out.
+On the client, we have one object that encapsulates everything data-related in Meteor: `Meteor.subcribe`, `Mongo.Collection`, and  `Mongo.Cursor`.
 
-### Client
+`DB.createSubscription` will create a `DBSubscriptionCursor` object for you. You can start and stop the subscription by calling `sub.start()` and `sub.stop()`. You can also use it as a cursor with `sub.observe` and `sub.observeChanges`. And you can fetch all the documents using `sub.fetch()` and this function is Tracker-aware / reactive.
 
-We can get away without any mini-databases on the client by delegating all the 
-database stuff to the database (where it should be)! On the client, we have one
-object -- a subscription -- that encapsulates everything data-related in Meteor: 
-`Meteor.subcribe`, `Mongo.Collection`, and  `Mongo.Cursor`.
+## Getting Started
 
-We create a subscription in much the same way we did before: 
-`sub = DB.subscribe(name, args...)`.
-This function basically just creates a `subId` and calls the appropriate Meteor publication
-we created with `DB.publish(name, ms, query)` and the args are passed directly to the 
-query function as arguments. The subscription object, `sub`, can now be used like this:
-- `sub.stop()` will stop the Meteor subscription.
-- `sub.observeChanges` and `sub.observe` work just like `Cursor.observe` and `Cursor.observeChanges`.
-- `sub.fetch()` is a Tracker-aware (reactive function) that will fetch all the documents
-in this subscription. 
+This package depends on the [`diff-sequence`](https://github.com/meteor/meteor/tree/devel/packages/diff-sequence) package which isn't part of Meteor 1.0. Until then, you'll have to manually include this package in your project. So first, copy this package into your `packages/` directory for your project (you can delete this when the next version of Meteor is released).
 
-#### Improvements
+    git clone https://github.com/ccorcos/meteor-diff-sequence packages/diff-sequence
 
-If you use React with components that all have PureRenderMixin (which is recommended), 
-then `sub.fetch()` is all you need. React's DOM-diffing will do all the hard work for you. 
-However, this is not how Blaze works. Blaze relies on fine-grained reactivity. Thus to get
-good performance out of Blaze, we'll need to build some concept of cursors (hopefully using
-lenses!) so that we can limit what documents and fields are fetched and reactive.
+Then add this package to your project
+
+    meteor add ccorcos:any-db
+
+### `DB.publish(options)` 
+
+`options` object fields:
+- `name`: name of the publication. (required)
+- `query`: a function that returns a collection of documents. Each document must contain a unique `_id` field. This function will be passed arguments when the client subscribes. (required if you don't pass a cursor function)
+- `cursor`: a function that returns a cursor that implements [`Cursor.observeChanges`](observeChanges). This function gets arguements when the client subscribes. (required if you dont pass a query function)
+- `ms`: the interval over which to poll an diff. If you dont pass a value, then the subscription must be triggered. (optional)
+- `depends`: a function that returns an array of keys which will trigger the publication to rerun. Also gets arguments when the client subscribes. (optional)
+
+**Example:**
+
+    DB.publish
+      name: 'msgs'
+      query: (roomId) ->
+        Neo4j.query """
+          MATCH (room:ROOM {_id:"#{roomId}"})-->(msg:MSG)
+          RETURN msg
+          ORDER BY msg.createdAt DESC
+        """
+      depends: (roomId) -> 
+        ["chatroom:#{roomId}"]
+
+    Meteor.methods
+      newMsg: (roomId, id, text) ->
+        check(id, String)
+        check(text, String)
+        msg = {
+          _id: id
+          text: text
+          createdAt: Date.now()
+        }
+        if Meteor.isServer
+          Neo4j.query """
+            MATCH (room:ROOM {_id:"#{roomId}"})
+            CREATE (room)-[:OWNS]->(:MSG #{Neo4j.stringify(msg)})
+          """
+          DB.triggerDeps("chatroom:#{roomId}")
 
 
-[1]:https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
+### `sub = DB.createSubscription(name, args...)`
+
+This function returns a `DBSubscriptionCursor` object. 
+
+- `name`: name of the publication to subscribe to.
+- `args...`: arguments to be passed to the `query`, `cursor`, and `depends` functions in the publication, much like with `Meteor.subscribe` and `Meteor.publish`.
+
+`sub` represents a subscription, an observer, and a cursor.
+
+- `sub.start()`: starts the subscription with the arguments passed into `DB.createSubscription`.
+- `sub.stop()`: stops the subscription.
+- `sub.observe`: observes the cursor with the same API as Meteor's [`Cursor.observe`](observe). You must use the positional callbacks (`addedAt`, etc.)
+- `sub.observeChanges`: observes changes to the cursor with the same API as Meteor's [`Cursor.observeChanges`](observeChanges). You must use the positional callbacks (`addedBefore`, etc.).
+- `sub.fetch()`: returns a collection of documents. This is a Tracker-aware (reactive) function.
+- `sub.trigger()`: triggers the publication to rerun to check for any changes.
+
+**Latency Compensation**
+
+The subscription object is actually an observer of the DDP messages. This it has the following methods: `addedBefore`, `movedBefore`, `changed`, `removed`. Using these methods, we can optimistically add changes to our subscription before waiting for a round trip from the server. However, these changes may get rejected by the server, so we also need an "undo" function which will undo these optimistic changes when the true results come back from the server.
+
+- `sub.addUndo(id, func)`: a function that will be called when the next DDP msg is received for a document matching the `id`. This is used to undo optimistic changes to the UI.
+
+**Example**
+
+    if Meteor.isClient
+      @msgs = DB.createSubscription('msgs', roomId)
+      @msgs.start()
+
+    Meteor.methods
+      newMsg: (roomId, id, text) ->
+        check(id, String)
+        check(text, String)
+        msg = {
+          _id: id
+          text: text
+          createdAt: Date.now()
+        }
+        if Meteor.isServer
+          Neo4j.query """
+            MATCH (room:ROOM {_id:"#{roomId}"})
+            CREATE (room)-[:OWNS]->(:MSG #{Neo4j.stringify(msg)})
+          """
+          DB.triggerDeps("chatroom:#{roomId}")
+        else
+          fields = R.pipe(
+            R.assoc('unverified', true), 
+            R.omit(['_id'])
+          )(msg)
+          @msgs.addedBefore(id, fields, @msgs.docs[0]?._id or null)
+          @msgs.addUndo id, => @msgs.removed(id)
+
+Note how we're using the subscription's observer methods to add and undo the optimistic change. We also have to create the `_id` on the client and send that to the server. This way, we can track the document as it goes to the server and back.
+
+You also have to make sure to catch any errors and undo the optimistic UI change. If an error occurs on the server, we'll never see a DDP message for that id come through to the client. For example:
+
+    Template.main.events
+      'click .newMsg': (e,t) ->
+        elem = t.find('input')
+        input = elem.value
+        id = Random.hexString(24)
+        Meteor.call 'newMsg', Session.get('roomId'), id, input, (err, result) -> 
+          if err then msgs.handleUndo(id)
+        elem.value = ''
+
+## Examples
+
+There are several [examples](/examples/) to check out, but must of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. Check it out [in action](https://www.youtube.com/watch?v=Av1EsSMB33w&feature=youtu.be).
+
+
+# TODO
+
+- Database drivers:
+  - rethinkdb
+  - redis
+  - postgresql
+  - mysql
+- Subscriptions from server to server
+
+
+[DDP_spec]:https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
+[observeChanges]: http://docs.meteor.com/#/full/observe_changes
+[observe]:http://docs.meteor.com/#/full/observe

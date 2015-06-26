@@ -55,11 +55,15 @@ if Meteor.isClient
     'click .room': ->
       Session.set('roomId', @_id)
     'click .newRoom': (e,t) ->
-      Meteor.call('newRoom', Random.hexString(24))
+      id = Random.hexString(24)
+      Meteor.call 'newRoom', id, (err, result) -> 
+        if err then subs.rooms.handleUndo(id)
     'click .newMsg': (e,t) ->
       elem = t.find('input')
       input = elem.value
-      Meteor.call('newMsg', Session.get('roomId'), Random.hexString(24), input)
+      id = Random.hexString(24)
+      Meteor.call 'newMsg', Session.get('roomId'), id, input, (err, result) -> 
+        if err then subs.msgs.handleUndo(id)
       elem.value = ''
 
 Meteor.methods
@@ -70,6 +74,7 @@ Meteor.methods
       createdAt: Date.now()
     }
     if Meteor.isServer
+      # throw new Meteor.Error(99, "Test optimistic UI")
       Neo4j.query("CREATE (:ROOM #{Neo4j.stringify(room)})")
       DB.triggerDeps('chatrooms')
     else
@@ -91,6 +96,7 @@ Meteor.methods
       createdAt: Date.now()
     }
     if Meteor.isServer
+      # throw new Meteor.Error(99, "Test optimistic UI")
       Neo4j.query """
         MATCH (room:ROOM {_id:"#{roomId}"})
         CREATE (room)-[:OWNS]->(:MSG #{Neo4j.stringify(msg)})
