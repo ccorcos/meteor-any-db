@@ -1,5 +1,22 @@
-newId = -> Random.hexString(24)
+# Styles using Radium: https://github.com/FormidableLabs/radium
+Style = 
+  wrapper:
+    display: 'flex'
+  left:
+    flex: '0 0 250px'
+    textAlign: 'center'
+  right:
+    flex: '1 1 0'
+  row:
+    padding: '5px'
+  selected:
+    backgroundColor: 'blue'
+    color: 'white'
+    borderRadius: '5px'
 
+
+# This is a pretty simple chat app, so we're going 
+# to do it all in one react component.
 App = createView
   displayName: 'App'
   
@@ -19,7 +36,7 @@ App = createView
 
   newRoom: ->
     if @state.room.length > 0
-      id = newId()
+      id = DB.newId()
       name = @state.room
       Meteor.call 'newRoom', id, name, (err, result) -> 
         if err
@@ -29,7 +46,7 @@ App = createView
 
   newMsg: ->
     if @state.msg.length > 0 and @props.roomId
-      id = Random.hexString(24)
+      id = DB.newId()
       text = @state.msg
       roomId = @props.roomId
       Meteor.call 'newMsg', roomId, id, text, (err, result) -> 
@@ -41,6 +58,7 @@ App = createView
 
     (div {style:[Style.wrapper]},
       (div {style:[Style.left]},
+        # new chatroom
         (div {style:[Style.row]},
           (input {
             onKeyDown: blurOnEnterTab
@@ -49,6 +67,7 @@ App = createView
             placeholder: 'NEW ROOM'
           })
         )
+        # list of chatrooms
         @props.rooms.map (room) =>
           if room._id is @props.roomId
             (div {
@@ -65,6 +84,7 @@ App = createView
       do =>
         if @props.roomId
           (div {style:[Style.right]},
+            # new message
             (div {style:[Style.row]},
               (input {
                 onKeyDown: blurOnEnterTab
@@ -73,35 +93,37 @@ App = createView
                 placeholder: 'NEW MESSAGE'
               })
             )
+            # list of messages
             @props.msgs.map (msg) ->
               (div {key: msg._id, style:[Style.row]}, msg.text)
           )
     )
 
-
+# render the top-level component with the app state
 render = (done) ->
   React.render(App(@State), document.body, done)
 
+# set the initial state
 evolveState
   rooms: []
   roomId: null
   msgs: []
 
 Meteor.startup ->
+  # initial render
   render()
 
   @Rooms = DB.createSubscription('chatrooms')
   Rooms.start()
   Tracker.autorun ->
-    # console.log "ROOMS CHANGED"
-    evolveState
-      rooms: Rooms.fetch()
+    evolveState({rooms: Rooms.fetch()})
     render()
 
   @Msgs = {}
+  # wrap the subscription in an autorun it will automatically
+  # stop when the autorun is stopped.
   autorun = null
   @selectRoom = (roomId) ->
-    # console.log "SELECT ROOM", roomId
     autorun?.stop?()
     if roomId
       msgs = Msgs[roomId]
@@ -110,7 +132,6 @@ Meteor.startup ->
       autorun = Tracker.autorun ->
         msgs.start()
         Tracker.autorun ->
-          # console.log "MSGS CHANGED"
           evolveState
             msgs: msgs.fetch()
             roomId: roomId

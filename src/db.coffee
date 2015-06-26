@@ -1,5 +1,5 @@
-debug = console.log.bind(console)
-# debug = (->)
+# debug = console.log.bind(console)
+debug = (->)
 
 {
   map
@@ -133,6 +133,7 @@ parseId = (id) ->
 # DB.name will be used as an identifier in DDP messages.
 @DB = {}
 DB.name = 'ANY_DB'
+DB.newId = -> Random.hexString(24)
 
 # Meteor does poll-and-diff does internally
 # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/polling_observe_driver.js#L176

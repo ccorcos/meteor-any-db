@@ -1,8 +1,10 @@
+React.initializeTouchEvents(true)
+# to get :active pseudoselector working
+document.addEventListener("touchstart", (()->), false)
+# also need cursor:pointer to work on mobile
 
 # React components
-Views = {}
-Controller = {}
-createView = compose(React.createFactory, Radium, React.createClass)
+createView = R.compose(React.createFactory, Radium, React.createClass)
 
 # Global state
 @State = {}
@@ -24,7 +26,7 @@ isFunction = (x) ->
 # Whatever changes must have a new reference, everything else
 # has the same reference to optimize for React with PureRender 
 # which checks object reference equality.
-evolve = curry (dest, obj) ->
+evolve = R.curry (dest, obj) ->
   newDest = shallowClone(dest)
   for k,v of obj
     if isPlainObject(v)
@@ -36,8 +38,8 @@ evolve = curry (dest, obj) ->
   return newDest
 
 # Similar to evolve but uses a predicate over an array
-evolveWhere = curry (pred, evolution, list) ->
-  map((element) ->
+evolveWhere = R.curry (pred, evolution, list) ->
+  R.map((element) ->
     if pred(element) then evolve(element, evolution) else element
   , list)
 
@@ -53,16 +55,12 @@ blurOnEnterTab = (e) ->
     $(e.target).blur()
   return e
 
-CSSTransitionGroup = React.createFactory(React.addons.CSSTransitionGroup)
 
 _.extend(this, {
-  Views
-  Controller
   createView
   shallowClone
   evolve
   evolveWhere
   evolveState
   blurOnEnterTab
-  CSSTransitionGroup
 })
