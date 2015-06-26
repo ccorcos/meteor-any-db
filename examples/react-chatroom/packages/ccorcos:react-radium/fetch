@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+# React
+url=$(curl -s http://facebook.github.io/react/downloads.html | grep -Eo '<a href="(.*)?">React with Add-Ons \d\.\d{2}\.\d{1,2} \(development\)' | cut -d \" -f2)
+wget -qO ./vendor/react.js "$url"
+
+# Radium
+wget -qO ./vendor/radium.js https://raw.githubusercontent.com/FormidableLabs/radium/master/dist/radium.js

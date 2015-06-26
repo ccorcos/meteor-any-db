@@ -10,3 +10,5 @@ ramda:ramda
 ccorcos:any-db
 zodern:nice-reload
 ccorcos:neo4j
+ccorcos:react-radium
+lodash:lodash
