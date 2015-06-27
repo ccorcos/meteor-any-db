@@ -24,7 +24,9 @@ if Meteor.isClient
       # When calling a method, you have to make sure to initialize
       # the id on the client and send it to the server so the client
       # and server can stay in sync.
-      Meteor.call('newMsg', Random.hexString(24), input.value)
+      id = DB.newId()
+      Meteor.call 'newMsg', id, input.value, (err, result) -> 
+        if err then msgs.handleUndo(id)
       input.value = ''
 
 # Both client and server
