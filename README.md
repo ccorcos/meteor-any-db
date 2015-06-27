@@ -1,18 +1,18 @@
 # Meteor Any-db
 
-This package allows you to use Meteor with any database or data source. Rather than have a mini-database on the client, we simply have a subscription/cursor object that represents the results of a server-side query. With the help of merge-box, we're still only sending the minimal amount of data to the client. 
+This package allows you to use Meteor with any database or data source. Rather than have a mini-database on the client, we simply have a subscription/cursor object that represents the results of a server-side query. With the help of merge-box, we're only sending the minimal amount of data to the client. 
 
 The most basic implementation is simply polling and diffing the results of a query over some interval for each user's subscription. Note that this query can return arbitary data -- data from a database query, or some 3rd party REST API.
 
-You can also turn off polling and simply trigger a "refresh" from the client. Rather than using a `Meteor.method` to get data from the server, this will efficiently sent only the changes down to the client.
+You can also turn off polling and simply trigger a "refresh" from the client. Rather than using a `Meteor.method` to get data from the server, this will efficiently send only the changes down to the client.
 
-You can also define dependencies for your publications so that you can trigger those publications to refresh elsewhere in your code (typically on a database write). This gives you instantaneous reactivity (check out the [chatroom](/examples/chatroom/) example built with Neo4j).
+You can also define dependencies for your publications so that you can trigger those publications to refresh elsewhere on the server (typically on a database write). This gives you instantaneous reactivity.
 
-Lastly, this package supports any datasource that supports [`Cursor.observeChanges`](observeChanges). Thus, you can use it with Mongo right now, and it could easily support other databases with realtime changefeeds.
+Lastly, this package can reactively publish any datasource that supports [`Cursor.observeChanges`](observeChanges). Thus, you can use it with Meteor's Mongo package as-is, and it could easily support other databases with realtime changefeeds.
 
 **Help**
 
-I could use some help building database drivers for other databases. This gets a little tricky when it comes to wrapping their API into fibers. I've been trying to do this with RethinkDB and failing. 
+I could use some help building database drivers for other databases. This gets a little tricky when it comes to wrapping their API into fibers. I've been trying to do this with RethinkDB and failing.
 
 ## How it works
 
