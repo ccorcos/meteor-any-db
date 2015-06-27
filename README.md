@@ -63,7 +63,7 @@ On the client, we have one object that encapsulates everything data-related in M
 
 This package depends on the [`diff-sequence`](https://github.com/meteor/meteor/tree/devel/packages/diff-sequence) package which isn't part of Meteor 1.0. Until then, you'll have to manually include this package in your project. So first, copy this package into your `packages/` directory for your project (you can delete this when the next version of Meteor is released).
 
-    git clone https://github.com/ccorcos/meteor-diff-sequence packages/diff-sequence
+    git clone https://github.com/ccorcos/meteor-diff-sequence
 
 Then add this package to your project
 
@@ -72,7 +72,7 @@ Then add this package to your project
 ### `DB.publish(options)` 
 
 `options` object fields:
-- `name`: name of the publication. (required)
+- `name`: name of the publication. (required) 
 - `query`: a function that returns a collection of documents. Each document must contain a unique `_id` field. This function will be passed arguments when the client subscribes. (required if you don't pass a cursor function)
 - `cursor`: a function that returns a cursor that implements [`Cursor.observeChanges`](observeChanges). This function gets arguements when the client subscribes. (required if you dont pass a query function)
 - `ms`: the interval over which to poll an diff. If you dont pass a value, then the subscription must be triggered. (optional)
@@ -174,7 +174,7 @@ You also have to make sure to catch any errors and undo the optimistic UI change
 
 ## Examples
 
-There are several [examples](/examples/) to check out, but must of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. Check it out [in action](https://www.youtube.com/watch?v=Av1EsSMB33w&feature=youtu.be).
+There are several [examples](/examples/) to check out, but must of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. Check it out [in action](https://www.youtube.com/watch?v=Av1EsSMB33w&feature=youtu.be). 
 
 
 # TODO
