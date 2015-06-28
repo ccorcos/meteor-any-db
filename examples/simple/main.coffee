@@ -4,7 +4,7 @@
 # The client simply shows the list.
 
 if Meteor.isServer
-  doc = (i) ->
+  createDoc = (i) ->
     {_id:i, value:i}
   docs = null
   
@@ -20,7 +20,7 @@ if Meteor.isServer
         docs.splice(j,0,doc)
         return R.clone(docs)
       else
-        docs = R.map(doc, [0...n])
+        docs = R.map(createDoc, [0...n])
         return R.clone(docs)
 
 if Meteor.isClient

@@ -7,7 +7,7 @@
 # we can get an issue. 
 
 if Meteor.isServer
-  doc = (i) ->
+  makeDoc = (i) ->
     {_id:i, value:i}
   docs = null
   
@@ -23,7 +23,7 @@ if Meteor.isServer
         docs.splice(j,0,doc)
         return R.clone(docs)
       else
-        docs = R.map(doc, [0...n])
+        docs = R.map(makeDoc, [0...n])
         return R.clone(docs)
 
 if Meteor.isClient
