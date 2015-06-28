@@ -221,6 +221,10 @@ if Meteor.isServer
       pollAndDiff()
       # Tell the client that the subscription is ready
       pub.ready()
+      # Set up a trigger
+      DB.triggers[subId] = pollAndDiff
+      pub.onStop -> 
+        delete DB.triggers[subId]
       if depends
         deps = depends.apply({}, args)
         registerDeps(pub, deps, subId, pollAndDiff)
@@ -230,10 +234,7 @@ if Meteor.isServer
         # clean up
         pub.onStop ->
           Meteor.clearInterval(intervalId)
-      else
-        DB.triggers[subId] = pollAndDiff
-        pub.onStop -> 
-          delete DB.triggers[subId]
+        
 
   # If you can implement observeChanges, then you can publish a cursor
   DB.publishCursor = (name, getCursor) ->
