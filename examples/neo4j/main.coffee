@@ -10,6 +10,8 @@ if Meteor.isServer
         RETURN msg
         ORDER BY msg.createdAt DESC
       """
+    depends: ->
+      ['msgs']
 
 if Meteor.isClient
   # The arguments are the same as you're used to with
@@ -48,6 +50,7 @@ Meteor.methods
     }
     if Meteor.isServer
       Neo4j.query("CREATE (:MSG #{Neo4j.stringify(msg)})")
+      DB.triggerDeps('msgs')
     else
       # Calling the the same signature of Cursor.observeChanges to add and
       # remove the subscription for latency compensation.

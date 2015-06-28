@@ -178,6 +178,10 @@ if Meteor.isServer
 
   # to trigger a poll and diff
   DB.triggers = {}
+
+  DB.trigger = (subId) ->
+    DB.triggers[subId]?()
+
   # keep track of publication dependencies
   DB.dependencies = {}
 
@@ -260,7 +264,7 @@ if Meteor.isServer
 Meteor.methods
   triggerSub: (subId) ->
     if Meteor.isServer
-      DB.triggers[subId]()
+      DB.trigger(subId)
 
 # We should be able to subscribe from server to server as well
 # but that will require some stuff with Fibers. Right now, its just
