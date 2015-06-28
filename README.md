@@ -172,6 +172,9 @@ You also have to make sure to catch any errors and undo the optimistic UI change
 
 There are several [examples](/examples/) to check out, but must of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. Check it out [in action](https://www.youtube.com/watch?v=Av1EsSMB33w&feature=youtu.be). 
 
+# Gotchas
+
+When you poll-and-diff, its possible for you to add a document and have another client remove the document before your write has been verified. Thus you are stuck with a latency compensated document that will never be removed. Thus it is important use `depends` and trigger the proper dependencies, or use `sub.trigger()` on the client right after the database write.
 
 # TODO
 
