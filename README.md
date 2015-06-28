@@ -61,11 +61,7 @@ On the client, we have one object that encapsulates everything data-related in M
 
 ## Getting Started
 
-This package depends on the [`diff-sequence`](https://github.com/meteor/meteor/tree/devel/packages/diff-sequence) package which isn't part of Meteor 1.0. Until then, you'll have to manually include this package in your project. So first, copy this package into your `packages/` directory for your project (you can delete this when the next version of Meteor is released).
-
-    git clone https://github.com/ccorcos/meteor-diff-sequence
-
-Then add this package to your project
+Add this package to your project.
 
     meteor add ccorcos:any-db
 

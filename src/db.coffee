@@ -131,7 +131,7 @@ parseId = (id) ->
 
 # global on both client and server.
 # DB.name will be used as an identifier in DDP messages.
-@DB = {}
+@DB = DB = {}
 DB.name = 'ANY_DB'
 DB.newId = -> Random.hexString(24)
 
