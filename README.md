@@ -1,69 +1,128 @@
-# Meteor Any-db
+# Meteor Any-DB
 
-This package allows you to use Meteor with any database or data source. Rather than have a mini-database on the client, we simply have a subscription/cursor object that represents the results of a server-side query. With the help of merge-box, we're only sending the minimal amount of data to the client. 
+This package allows you to use Meteor with any **database** or **data source**. Simply add it to you project:
 
-The most basic implementation is simply polling and diffing the results of a query over some interval for each user's subscription. Note that this query can return arbitary data -- data from a database query, or some 3rd party REST API.
+    meteor add ccorcos:any-db
 
-You can also turn off polling and simply trigger a "refresh" from the client. Rather than using a `Meteor.method` to get data from the server, this will efficiently send only the changes down to the client.
+Rather than have a mini-database on the client, we simply have a subscription-cursor object that represents the results of a server-side query. To keep Meteor reactive, we specify the dependencies for each publication and trigger them to update when necessary. Here's a simple example for a chatroom:
 
-You can also define dependencies for your publications so that you can trigger those publications to refresh elsewhere on the server (typically on a database write). This gives you instantaneous reactivity.
+    # on the server
+    DB.publish
+      name: 'msgs'
+      query: (roomId) -> fetchMessages(roomId)
+      depends: (roomId) -> ["chatroom:#{roomId}"]
 
-Lastly, this package can reactively publish any datasource that supports [`Cursor.observeChanges`](observeChanges). Thus, you can use it with Meteor's Mongo package as-is, and it could easily support other databases with realtime changefeeds.
+    # on the client
+    msgs = DB.createSubscription('msgs', roomId)
 
-**Help**
+In this example, `fetchMessages` returns a collection of documents that must contain unique `_id` fields. This could mean reading from a file, fetching data from a 3rd party API, or querying a database. Anything in your query that is asynchronous, must be wrapped in a fiber using [`Meteor.wrapAsync`](http://docs.meteor.com/#/full/meteor_wrapasync). `depends` is a function returning an array of keys. These keys will be used to trigger the query to rerun, updating the user's publication.
 
-I could use some help building database drivers for other databases. This gets a little tricky when it comes to wrapping their API into fibers. I've been trying to do this with RethinkDB and failing.
+`msgs` is a subscription-cursor-observer-like object. Like a subscription, you can `.start(onReady)` and `.stop()` it. Like a cursor, you can `.observe`, `.observeChanges`, or `.fetch()`. Thus you can use it right in your blaze templates.
+
+    Template.messages.onRendered ->
+      msgs.start()
+
+    Template.messages.onDestroyed
+      msgs.stop()
+
+    Template.messages.helpers
+      msgs: () -> msgs
+
+Like an observer `msgs` has `.addedBefore`, `.movedBefore`, `.changed`, and `.removed` just like Meteor's [`Cursor.observeChanges`](observeChanges). This comes in handy, not only for the internals of this package, but for latency compensation. When performing a write operation, we can use these observer methods to simulate the change on the client and provide an undo operation that will run when the client recieves a document with the same `_id` from the server. This means that document ids must be created on the client. You can generate ids using `DB.newId()` which simply calls `Random.hexString(24)`. 
+
+    Meteor.methods
+      newMsg: (roomId, msgId, text) ->
+        if Meteor.isServer
+          createMessage(roomId, msgsId, text)
+          DB.triggerDeps("chatroom:#{roomId}")
+        else
+          fields = {_id: msgId, text: text, unverified: true}
+          before = msgs.docs[0]?._id or null
+          msgs.addedBefore(msgId, fields, before)
+          undo = -> msgs.removed(msgId)
+          msgs.addUndo(msgId, undo)
+
+After a write on the server, we'll trigger an update to any subscriptions based on the dependency keys specified in the publications using `DB.triggerDeps`.
+
+When you call this method, its important to catch if there are any errors and handle undo'ing the latency compensation. Otherwise, if the server throws an error on this method and the document isn't written, the latency-compensated document will live forever on the client.
+
+    msgId = Random.hexString(24)
+    Meteor.call 'newMsg', roomId, msgId, text, (err, result) -> 
+      if err then msgs.handleUndo(msgId)
+
+That's all there is to it! Now you can use any database reactively with Meteor!
+
+## Bells and Whistles
+
+### Publishing Cursors
+
+This package can also publish any cursor that implements [`Cursor.observeChanges`](observeChanges). Meteor's `mongo` pacakge works right out of the box:
+
+    # on the server
+    DB.publish
+      name: 'msgs'
+      cursor: (roomId) -> Msgs.find({roomId: roomId})
+
+But since we aren't using `minimongo` anymore, you'll still have to do latency compensation, but you won't need to `triggerDeps`.
+
+    Meteor.methods
+      newMsg: (roomId, msgId, text) ->
+        if Meteor.isServer
+          Msgs.insert({roomId: roomId, _id: msgsId, text: text})
+        else
+          fields = {_id: msgId, text: text, unverified: true}
+          before = msgs.docs[0]?._id or null
+          msgs.addedBefore(msgId, fields, before)
+          undo = -> msgs.removed(msgId)
+          msgs.addUndo(msgId, undo)
+
+### Publishing REST APIs
+
+This package is also suitable for publishing data continuously from REST APIs. Typically, you might use `Meteor.methods`, calling it periodically from the client using `Meteor.setInterval` to get updated results. 
+
+    Meteor.methods
+      events: (location) ->
+        params = {app_key: EVENTFUL_API_KEY, location: location}
+        HTTP.get("http://api.eventful.com/json/events/search", {params: params})?.data
+
+This approach sends a lot of redundant data over the network every time you call this method. Using this package, `DB.publish` uses `merge-box` and `diff-sequence` under the hood to efficiently send only the minimal amount of data over the network.
+
+    DB.publish
+      name: 'events'
+      query: (location) ->
+        params = {app_key: EVENTFUL_API_KEY, location: location}
+        response = HTTP.get("http://api.eventful.com/json/events/search", {params: params})
+        response?.data?.events?.map((event) ->
+          event._id = event.id
+          delete event['id']
+          return event
+        ) or []
+      ms: 10000
+
+This will update all publications every 10 seconds, specified by the `ms` option. Note that every document must have a unique `_id`! Alternatively, you can leave out `ms` option and trigger the subscription to refresh from the client like an old-school refresh button.
+
+    events = DB.createSubscription('event', 'Los Angeles, CA')
+    events.start()
+
+    Template.events.events
+      'click .refresh': ->
+        events.trigger()
+
+## Examples
+
+There are several [examples](/examples/) to check out, but most of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. 
 
 ## How it works
 
-### Motivation
+### Server
 
-(Please help with references and corrections. I could be wrong about some of these things. I'm just going off the top of my head...)
+Each publication accepts a query function which must return a collection of documents that must contain a unique `_id` field. [DDP does not yet support ordered queries](DDP_spec) so every DDP message related to `addedBefore` or `movedBefore` has an additional (salted) key-value specifying the subscription and position.
 
-First, let me go over the current state of Mongo integration with Meteor.
+### Client
 
-Without Oplog tailing, Meteor will watch for database writes locally and update
-the subscriptions on those writes. They do this by effectively reimplementing
-Mongo in Javascript, aka Minimongo. This is a huge pain, but has had great success.
-If you are running two Meteor servers, however, then these servers aren't aware of
-each others subscriptions. In this case, Meteor resorts to polling Mongo every 10 seconds
-diffing the results, and updating the subscriptions accordingly.
+On the client, we have an object, `DBSubscriptionCursor`, that encapsulates everything data-related in Meteor: `Meteor.subscribe`, `Mongo.Collection`, and  `Mongo.Cursor`. We simple use `connection.registerStore` to register a data store and treat `DBSubscriptionCursor` as an observer, calling the appropriate [`Cursor.observeChanges`](observeChanges) method on each active subscription.
 
-With Oplog tailing, Meteor watches the the Mongo operation log and updates any subscriptions
-that depend on those changes immediately. This works great across multiple servers but if 
-Mongo has a high rate of writes, then your servers will struggle to keep up with the oplog
-and take up all the processing power. In this case, Meteor again resorts to a 10 second
-poll-and-diff.
-
-So if we were to implement other database drivers, it seems the 10 second poll-and-diff
-would be a could place to start. This is actually pretty simple since Meteor lets us write
-arbitrary data to our publications. Thus, the challenging part is the client. 
-
-Implementing mini[db] for every database is clearly not a scalable solution.
-In fact, its always bothered me how I end up writing the same exact Mongo query twice -- 
-once in `Meteor.publish` and once in `Template.helpers`. Also, with more complicated
-database queries you might run with Neo4j, there's no way to replicate these queries 
-on the client without the whole corpus of data (e.g. min-flow/max-cut and other graph queries).
-
-### Implementation
-
-#### Server
-
-Each publication accepts a query function which must return a collection of documents that must contain a unique `_id` field. [DDP does not yet support ordered queries](DDP_spec) so every DDP message related to `addedBefore` or `movedBefore` has an additional key specifying which subscription and which position.
-
-Publications can also specify dependency keys which will trigger them to update immediately when those dependencies are triggered.
-
-#### Client
-
-On the client, we have one object that encapsulates everything data-related in Meteor: `Meteor.subcribe`, `Mongo.Collection`, and  `Mongo.Cursor`.
-
-`DB.createSubscription` will create a `DBSubscriptionCursor` object for you. You can start and stop the subscription by calling `sub.start()` and `sub.stop()`. You can also use it as a cursor with `sub.observe` and `sub.observeChanges`. And you can fetch all the documents using `sub.fetch()` and this function is Tracker-aware / reactive.
-
-## Getting Started
-
-Add this package to your project.
-
-    meteor add ccorcos:any-db
+## Docs
 
 ### `DB.publish(options)` 
 
@@ -122,9 +181,9 @@ This function returns a `DBSubscriptionCursor` object.
 
 **Latency Compensation**
 
-The subscription object is actually an observer of the DDP messages. This it has the following methods: `addedBefore`, `movedBefore`, `changed`, `removed`. Using these methods, we can optimistically add changes to our subscription before waiting for a round trip from the server. However, these changes may get rejected by the server, so we also need an "undo" function which will undo these optimistic changes when the true results come back from the server.
+The subscription object is actually an observer of the DDP messages with the following methods: `addedBefore`, `movedBefore`, `changed`, `removed`. Using these methods, we can optimistically add changes to our subscription before waiting for a round trip from the server. However, these changes may get rejected by the server, so we also need an "undo" function which will undo these optimistic changes when the true results come back from the server.
 
-- `sub.addUndo(id, func)`: a function that will be called when the next DDP msg is received for a document matching the `id`. This is used to undo optimistic changes to the UI.
+- `sub.addUndo(id, func)`: Calls a function `func` when the next DDP msg is received for a document matching the `id`. This is used to undo optimistic changes to the UI.
 
 **Example**
 
@@ -157,24 +216,16 @@ The subscription object is actually an observer of the DDP messages. This it has
 
 Note how we're using the subscription's observer methods to add and undo the optimistic change. We also have to create the `_id` on the client and send that to the server. This way, we can track the document as it goes to the server and back.
 
-You also have to make sure to catch any errors and undo the optimistic UI change. If an error occurs on the server, we'll never see a DDP message for that id come through to the client. For example:
+If an error occurs on the server, we'll never see a DDP message for that id come through to the client so you'll also have to make sure to catch any errors and undo the optimistic UI change. For example:
 
     Template.main.events
       'click .newMsg': (e,t) ->
         elem = t.find('input')
-        input = elem.value
+        text = elem.value
         id = Random.hexString(24)
-        Meteor.call 'newMsg', Session.get('roomId'), id, input, (err, result) -> 
+        Meteor.call 'newMsg', Session.get('roomId'), id, text, (err, result) -> 
           if err then msgs.handleUndo(id)
         elem.value = ''
-
-## Examples
-
-There are several [examples](/examples/) to check out, but must of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. Check it out [in action](https://www.youtube.com/watch?v=Av1EsSMB33w&feature=youtu.be). 
-
-## Gotchas
-
-When you poll-and-diff, its possible for you to add a document and have another client remove the document before your write has been verified. Thus you are stuck with a latency compensated document that will never be removed. Thus it is important use `depends` and trigger the proper dependencies, or use `sub.trigger()` on the client right after the database write.
 
 ## TODO
 
@@ -184,7 +235,6 @@ When you poll-and-diff, its possible for you to add a document and have another 
   - postgresql
   - mysql
 - Subscriptions from server to server
-
 
 [DDP_spec]:https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
 [observeChanges]: http://docs.meteor.com/#/full/observe_changes
