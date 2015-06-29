@@ -1,6 +1,6 @@
 Package.describe({
   name: 'ccorcos:any-db',
-  summary: 'Database API for Meteor',
+  summary: 'A database API for Meteor',
   version: '0.0.1',
   git: 'https://github.com/ccorcos/meteor-any-db'
 });

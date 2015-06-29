@@ -60,9 +60,9 @@ Meteor.call 'newMsg', roomId, msgId, text, (err, result) ->
 
 That's all there is to it! Now you can use any database reactively with Meteor!
 
-## Bells and Whistles
+# Bells and Whistles
 
-### Publishing Cursors
+## Publishing Cursors
 
 This package can also publish any cursor that implements [`Cursor.observeChanges`][observeChanges]. Meteor's `mongo` pacakge works right out of the box:
 
@@ -94,7 +94,7 @@ I could use some help building drivers for reactive databases like Redis and Ret
 All we need to do is implement `observeChanges` on a query cursor. There are also other
 other tools for making MySQL and Postgres reactive as well.
 
-### Publishing REST APIs
+## Publishing REST APIs
 
 This package is also suitable for publishing data continuously from REST APIs. Typically, you might use `Meteor.methods`, calling it periodically from the client using `Meteor.setInterval` to get updated results. 
 
@@ -132,26 +132,26 @@ Template.events.events
     events.trigger()
 ```
 
-## Examples
+# Examples
 
 There are several [examples](/examples/) to check out, but most of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. 
 
-## How it works
+# How it works
 
 The codebase is actually pretty straightforward and I made sure to include LOTS of comments. 
 There are also plenty links to the Meteor codebase in the comments describing how I figured things out that are currently undocumented. Feel free to [dive in](/src/db.coffee)!
 
-### Server
+## Server
 
 Each publication accepts a query function which must return a collection of documents that must contain a unique `_id` field. [DDP does not yet support ordered queries][DDP_spec] so every DDP message related to `addedBefore` or `movedBefore` has an additional (salted) key-value specifying the subscription and position.
 
-### Client
+## Client
 
 On the client, we have an object, `DBSubscriptionCursor`, that encapsulates everything data-related in Meteor: `Meteor.subscribe`, `Mongo.Collection`, and  `Mongo.Cursor`. We simple use `connection.registerStore` to register a data store and treat `DBSubscriptionCursor` as an observer, calling the appropriate [`Cursor.observeChanges`][observeChanges] method on each active subscription.
 
-## Docs
+# Docs
 
-### `DB.publish(options)` 
+#### `DB.publish(options)` 
 
 `options` object fields:
 - `name`: name of the publication. (required) 
@@ -192,7 +192,7 @@ Meteor.methods
 ```
 
 
-### `sub = DB.createSubscription(name, args...)`
+#### `sub = DB.createSubscription(name, args...)`
 
 This function returns a `DBSubscriptionCursor` object. 
 
@@ -260,10 +260,11 @@ Template.main.events
     elem.value = ''
 ```
 
-## TODO
+# TODO
 
 - Subscriptions from server to server
 - Use Tracker for pub/sub dependencies
+- Automated tests!
 - Database drivers:
   - rethinkdb
   - redis
