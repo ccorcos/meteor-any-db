@@ -212,7 +212,7 @@ if Meteor.isServer
   # pollAndDiff functions to the the appriate dependencyKey object. When you
   # trigger a dependency as changed, every function in the object
   # for that dependency will rerun. 
-  # In the future, it wouldn't be a bad idea to use Tracker to leverage
+  # TODO: In the future, it wouldn't be a bad idea to use Tracker to leverage
   # the flush cycle so we dont rerun the same dependency multiple times
   # right after each other.
   DB.dependencies = {}
@@ -310,8 +310,6 @@ if Meteor.isServer
 # refresh on someone elses subscription. Thats no big deal.
 Meteor.methods
   triggerSub: (subId) ->
-    # TODO: it would be nice if we could provide some way to 
-    # determine start/stop loading...
     if Meteor.isServer
       DB.trigger(subId)
 

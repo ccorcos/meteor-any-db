@@ -1,6 +1,6 @@
 # Meteor Any-DB
 
-This package allows you to use Meteor with any **database** or **data source**. Simply add it to you project:
+This package allows you to use Meteor with any **database** or **data source**. Simply add it to your project:
 
     meteor add ccorcos:any-db
 
@@ -88,6 +88,12 @@ Meteor.methods
       msgs.addUndo(msgId, undo)
 ```
 
+**Help**
+
+I could use some help building drivers for reactive databases like Redis and RethinkDB.
+All we need to do is implement `observeChanges` on a query cursor. There are also other
+other tools for making MySQL and Postgres reactive as well.
+
 ### Publishing REST APIs
 
 This package is also suitable for publishing data continuously from REST APIs. Typically, you might use `Meteor.methods`, calling it periodically from the client using `Meteor.setInterval` to get updated results. 
@@ -131,6 +137,9 @@ Template.events.events
 There are several [examples](/examples/) to check out, but most of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. 
 
 ## How it works
+
+The codebase is actually pretty straightforward and I made sure to include LOTS of comments. 
+There are also plenty links to the Meteor codebase in the comments describing how I figured things out that are currently undocumented. Feel free to [dive in](/src/db.coffee)!
 
 ### Server
 
@@ -253,12 +262,14 @@ Template.main.events
 
 ## TODO
 
+- Subscriptions from server to server
+- Use Tracker for pub/sub dependencies
 - Database drivers:
   - rethinkdb
   - redis
   - postgresql
   - mysql
-- Subscriptions from server to server
+
 
 [DDP_spec]: https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
 [observeChanges]: http://docs.meteor.com/#/full/observe_changes
