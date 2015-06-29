@@ -32,7 +32,7 @@ Template.messages.helpers
   msgs: () -> msgs
 ```
 
-Like an observer `msgs` has `.addedBefore`, `.movedBefore`, `.changed`, and `.removed` just like Meteor's [`Cursor.observeChanges`](observeChanges). This comes in handy, not only for the internals of this package, but for latency compensation. When performing a write operation, we can use these observer methods to simulate the change on the client and provide an undo operation that will run when the client recieves a document with the same `_id` from the server. This means that document ids must be created on the client. You can generate ids using `DB.newId()` which simply calls `Random.hexString(24)`. 
+Like an observer `msgs` has `.addedBefore`, `.movedBefore`, `.changed`, and `.removed` just like Meteor's [`Cursor.observeChanges`][observeChanges]. This comes in handy, not only for the internals of this package, but for latency compensation. When performing a write operation, we can use these observer methods to simulate the change on the client and provide an undo operation that will run when the client recieves a document with the same `_id` from the server. This means that document ids must be created on the client. You can generate ids using `DB.newId()` which simply calls `Random.hexString(24)`. 
 
 ```coffee
 Meteor.methods
@@ -64,7 +64,7 @@ That's all there is to it! Now you can use any database reactively with Meteor!
 
 ### Publishing Cursors
 
-This package can also publish any cursor that implements [`Cursor.observeChanges`](observeChanges). Meteor's `mongo` pacakge works right out of the box:
+This package can also publish any cursor that implements [`Cursor.observeChanges`][observeChanges]. Meteor's `mongo` pacakge works right out of the box:
 
 ```coffee
 # on the server
@@ -134,11 +134,11 @@ There are several [examples](/examples/) to check out, but most of them are real
 
 ### Server
 
-Each publication accepts a query function which must return a collection of documents that must contain a unique `_id` field. [DDP does not yet support ordered queries](DDP_spec) so every DDP message related to `addedBefore` or `movedBefore` has an additional (salted) key-value specifying the subscription and position.
+Each publication accepts a query function which must return a collection of documents that must contain a unique `_id` field. [DDP does not yet support ordered queries][DDP_spec] so every DDP message related to `addedBefore` or `movedBefore` has an additional (salted) key-value specifying the subscription and position.
 
 ### Client
 
-On the client, we have an object, `DBSubscriptionCursor`, that encapsulates everything data-related in Meteor: `Meteor.subscribe`, `Mongo.Collection`, and  `Mongo.Cursor`. We simple use `connection.registerStore` to register a data store and treat `DBSubscriptionCursor` as an observer, calling the appropriate [`Cursor.observeChanges`](observeChanges) method on each active subscription.
+On the client, we have an object, `DBSubscriptionCursor`, that encapsulates everything data-related in Meteor: `Meteor.subscribe`, `Mongo.Collection`, and  `Mongo.Cursor`. We simple use `connection.registerStore` to register a data store and treat `DBSubscriptionCursor` as an observer, calling the appropriate [`Cursor.observeChanges`][observeChanges] method on each active subscription.
 
 ## Docs
 
@@ -147,7 +147,7 @@ On the client, we have an object, `DBSubscriptionCursor`, that encapsulates ever
 `options` object fields:
 - `name`: name of the publication. (required) 
 - `query`: a function that returns a collection of documents. Each document must contain a unique `_id` field. This function will be passed arguments when the client subscribes. (required if you don't pass a cursor function)
-- `cursor`: a function that returns a cursor that implements [`Cursor.observeChanges`](observeChanges). This function gets arguements when the client subscribes. (required if you dont pass a query function)
+- `cursor`: a function that returns a cursor that implements [`Cursor.observeChanges`][observeChanges]. This function gets arguements when the client subscribes. (required if you dont pass a query function)
 - `ms`: the interval over which to poll an diff. If you dont pass a value, then the subscription must be triggered. (optional)
 - `depends`: a function that returns an array of keys which will trigger the publication to rerun. Also gets arguments when the client subscribes. (optional)
 
@@ -194,8 +194,8 @@ This function returns a `DBSubscriptionCursor` object.
 
 - `sub.start()`: starts the subscription with the arguments passed into `DB.createSubscription`.
 - `sub.stop()`: stops the subscription.
-- `sub.observe`: observes the cursor with the same API as Meteor's [`Cursor.observe`](observe). You must use the positional callbacks (`addedAt`, etc.)
-- `sub.observeChanges`: observes changes to the cursor with the same API as Meteor's [`Cursor.observeChanges`](observeChanges). You must use the positional callbacks (`addedBefore`, etc.).
+- `sub.observe`: observes the cursor with the same API as Meteor's [`Cursor.observe`][observe]. You must use the positional callbacks (`addedAt`, etc.)
+- `sub.observeChanges`: observes changes to the cursor with the same API as Meteor's [`Cursor.observeChanges`][observeChanges]. You must use the positional callbacks (`addedBefore`, etc.).
 - `sub.fetch()`: returns a collection of documents. This is a Tracker-aware (reactive) function.
 - `sub.trigger()`: triggers the publication to rerun to check for any changes.
 
@@ -260,6 +260,6 @@ Template.main.events
   - mysql
 - Subscriptions from server to server
 
-[DDP_spec]:https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
+[DDP_spec]: https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/ddp/DDP.md#procedure-2
 [observeChanges]: http://docs.meteor.com/#/full/observe_changes
-[observe]:http://docs.meteor.com/#/full/observe
+[observe]: http://docs.meteor.com/#/full/observe
