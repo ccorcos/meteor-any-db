@@ -138,7 +138,7 @@ Template.events.events
 
 # Examples
 
-There are several [examples](/examples/) to check out, but most of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. 
+There are several [examples](/examples/) to check out, but most of them are really just end-to-end tests. The best example to check out is the [chatroom](/examples/chatroom/). This example uses Neo4j as a database to create a chatroom. Also check out the mongo and rethink examples!
 
 # How it works
 
