@@ -259,7 +259,7 @@ if Meteor.isServer
       observer = createObserver(pub, subId)
       # pass the arguments to the query function
       # returning a collection of documents
-      poll = () -> apply(query, args)
+      poll = () -> query.apply(pub, args)
       # MDG did all the hard work of efficiently diff'ing two collections :)
       # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/diff-sequence/diff.js#L7
       pollAndDiff = ->
@@ -287,7 +287,7 @@ if Meteor.isServer
     Meteor.publish name, (args) ->
       pub = this
       subId = pub._subscriptionId
-      cursor = apply(getCursor, args)
+      cursor = getCursor.apply(pub, args)
       observer = createObserver(pub, subId)
       handle = cursor.observeChanges(observer)
       pub.ready()
