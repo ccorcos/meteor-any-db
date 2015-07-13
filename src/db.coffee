@@ -174,7 +174,7 @@ if Meteor.isServer
   # When you return a Mongo.Cursor from Meteor.publish, it calls this function:
   # https://github.com/meteor/meteor/blob/e2616e8010dfb24f007e5b5ca629258cd172ccdb/packages/mongo/collection.js#L302
   # So this function returns an observer that publishes ordered data to subscribers.
-  createObserver = (pub, subId) ->
+  DB.createObserver = (pub, subId) ->
     addedBefore: (id, fields, before) ->
       fields = R.pipe(
         addPosition(subId, before)
@@ -256,7 +256,7 @@ if Meteor.isServer
       # the current set of documents in this publication
       docs = []
       # the observer with the position shim
-      observer = createObserver(pub, subId)
+      observer = DB.createObserver(pub, subId)
       # pass the arguments to the query function
       # returning a collection of documents
       poll = () -> query.apply(pub, args)
@@ -288,7 +288,7 @@ if Meteor.isServer
       pub = this
       subId = pub._subscriptionId
       cursor = getCursor.apply(pub, args)
-      observer = createObserver(pub, subId)
+      observer = DB.createObserver(pub, subId)
       handle = cursor.observeChanges(observer)
       pub.ready()
       pub.onStop ->
