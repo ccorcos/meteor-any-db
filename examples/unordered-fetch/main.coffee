@@ -2,10 +2,10 @@
 if Meteor.isServer
   Rooms = new Mongo.Collection('rooms')
   Messages = new Mongo.Collection('messages')
-  publish 'rooms', {ordered:true, cursor:false}, () ->
-    Rooms.find({}, {sort:{createdAt:-1}}).fetch()
-  publish 'messages', {ordered:true, cursor:false}, (roomId) ->
-    Messages.find({roomId}, {sort:{createdAt:-1}}).fetch()
+  publish 'rooms', {ordered:false, cursor:false}, () ->
+    Rooms.find({}).fetch()
+  publish 'messages', {ordered:false, cursor:false}, (roomId) ->
+    Messages.find({roomId}).fetch()
 
 Meteor.methods
   newRoom: (name) ->
@@ -44,7 +44,7 @@ if Meteor.isClient
     componentWillMount: ->
       @roomSub = subscribe('rooms')
       @roomSub.onChange (rooms) =>
-        @setState({rooms})
+        @setState({rooms: rooms.sort((a,b) -> a.createdAt < b.createdAt)})
 
     componentWillUnmount: ->
       @roomSub.stop()
@@ -55,7 +55,7 @@ if Meteor.isClient
       @setState({roomId, messages:[]})
       @messagesSub = subscribe('messages', roomId)
       @messagesSub.onChange (messages) =>
-        @setState({messages})
+        @setState({messages: messages.sort((a,b) -> a.createdAt < b.createdAt)})
 
     getInitialState: ->
       rooms: []
