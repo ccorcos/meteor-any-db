@@ -1,0 +1,25 @@
+.wrapper {
+  display: flex;
+}
+
+.rooms {
+  flex: 1 1 0;
+  padding: 5px;
+}
+
+.messages {
+  flex: 2 2 0;
+  padding: 5px;
+}
+
+.selected {
+  font-weight: bold;
+}
+
+.row, input {
+  width: 100%;
+}
+
+.unverified {
+  color: red;
+}
