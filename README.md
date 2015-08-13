@@ -1,6 +1,202 @@
 # Meteor Any-DB
 
-This package allows you to use Meteor with any **database** or **data source**. 
+This package allows you to use Meteor with any **database** or **data source**.
+
+# Getting Started
+
+Simply add this package to your project:
+
+    meteor add ccorcos:any-db
+
+Rather than have mini-database on the client, the data for each subscription belongs to the subscription itself.
+This package allows you to publish cursors or collections, ordered or unordered.
+
+Unordered publications end up on the client as objects with id's as keys. Ordered publications end up on the client as arrays of documents. Every document must have a unique `_id` property.
+
+Cursor publications have reactivity baked in, thus we can use Mongo cursors just as we always have. But if you want to use another database, you'll have to manage reactivity yourself. Whenever you write to the database, any publications that will be effected can be refreshed using `refreshPub(name, query)`. Now, publications have only two arguments, a query and some options. The options will typically be a limit or offset which does not effect whether the subscription should be refreshed or not.
+
+# Examples
+
+Publications are pretty simple:
+
+```coffee
+publish 'messages', {ordered: true, cursor: false}, ({roomId}, {limit}) ->
+  Messages.find({roomId}, {limit, sort:{createdAt:-1}}).fetch()
+```
+
+There are two common patterns you might use for handling subscriptions depending on whether or not you want to show a loading animation:
+
+```coffee
+# without loading animation
+sub = subscribe('message', {roomId}, {limit})
+sub.onChange (messages) => @setState({messages})
+sub.data # get the current data for the subscription
+sub.stop() # stop the subscription
+
+# with a loading animation
+@setState({loading:true})
+sub = subscribe 'messages', {roomId}, {limit}, ({data, onChange}) =>
+  @setState({messages:data, loading:false})
+  sub.onChange (messages) => @setState({messages})
+```
+
+Now if you're publishing a cursor, then the publication will send new data to the client automatically, but if you're not publishing a cursor, you need to tell the publication that the data has updated and it needs to refresh the publication. This typically happens on a write:
+
+```coffee
+Meteor.methods
+  newMsg: (roomId, text) ->
+    if Meteor.isServer
+      Messages.insert({roomId, text, createdAt:Date.now()})
+      refreshPub('messages', roomId)
+```
+
+This will not do latency compensation on the client, but it will make sure that the changes get updated on the client as soon as possible. If you want latency compensation on the client, this is something you can easily implement yourself around this package.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+explain v2
+create another package for stores
+create another package for react-ui elements
+
+
+
+
+
+
+
+
+
+
+
+
+
+# TODO v2
+
+chatroom example with React 4 different ways, ordered, cursor, etc.
+
+stores with a store data component
+
+
+pub -> db -> ... -> sub -> store
+
+actions -> db -> pub...
+        -> updates -> store
+
+
+data name: db, store
+action name: action, update
+
+
+## pub-sub
+
+The first argument is a query. This is used for refreshing pubs. The second argument
+is options, such a limit or offset. This doesnt effect whether or not it should be
+refreshed, but it is a different publication.
+
+```coffee
+publish 'messages', {ordered: false, cursor: true}, ({roomId}, {limit}) ->
+  Neo4j.query()
+
+subscribe 'messages', {roomId}, {limit}, (sub) ->
+  sub.data
+  sub.onChange (data) ->
+  sub.stop()
+
+refreshPub('messages', {roomId})
+```
+
+## stores
+
+stores abstract away all of this stuff for you :)
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Getting Started
 
@@ -36,7 +232,7 @@ Template.messages.helpers
   msgs: () -> msgs
 ```
 
-Like an observer `msgs` has `.addedBefore`, `.movedBefore`, `.changed`, and `.removed` just like Meteor's [`Cursor.observeChanges`][observeChanges]. This comes in handy, not only for the internals of this package, but for latency compensation. When performing a write operation, we can use these observer methods to simulate the change on the client and provide an undo operation that will run when the client recieves a document with the same `_id` from the server. This means that document ids must be created on the client. You can generate ids using `DB.newId()` which simply calls `Random.hexString(24)`. 
+Like an observer `msgs` has `.addedBefore`, `.movedBefore`, `.changed`, and `.removed` just like Meteor's [`Cursor.observeChanges`][observeChanges]. This comes in handy, not only for the internals of this package, but for latency compensation. When performing a write operation, we can use these observer methods to simulate the change on the client and provide an undo operation that will run when the client recieves a document with the same `_id` from the server. This means that document ids must be created on the client. You can generate ids using `DB.newId()` which simply calls `Random.hexString(24)`.
 
 ```coffee
 Meteor.methods
@@ -58,7 +254,7 @@ When you call this method, its important to catch if there are any errors and ha
 
 ```coffee
 msgId = Random.hexString(24)
-Meteor.call 'newMsg', roomId, msgId, text, (err, result) -> 
+Meteor.call 'newMsg', roomId, msgId, text, (err, result) ->
   if err then msgs.handleUndo(msgId)
 ```
 
@@ -100,7 +296,7 @@ other tools for making MySQL and Postgres reactive as well.
 
 ## Publishing REST APIs
 
-This package is also suitable for publishing data continuously from REST APIs. Typically, you might use `Meteor.methods`, calling it periodically from the client using `Meteor.setInterval` to get updated results. 
+This package is also suitable for publishing data continuously from REST APIs. Typically, you might use `Meteor.methods`, calling it periodically from the client using `Meteor.setInterval` to get updated results.
 
 ```coffee
 Meteor.methods
@@ -142,7 +338,7 @@ There are several [examples](/examples/) to check out, but most of them are real
 
 # How it works
 
-The codebase is actually pretty straightforward and I made sure to include LOTS of comments. 
+The codebase is actually pretty straightforward and I made sure to include LOTS of comments.
 There are also plenty links to the Meteor codebase in the comments describing how I figured things out that are currently undocumented. Feel free to [dive in](/src/db.coffee)!
 
 ## Server
@@ -155,10 +351,10 @@ On the client, we have an object, `DBSubscriptionCursor`, that encapsulates ever
 
 # Docs
 
-#### `DB.publish(options)` 
+#### `DB.publish(options)`
 
 `options` object fields:
-- `name`: name of the publication. (required) 
+- `name`: name of the publication. (required)
 - `query`: a function that returns a collection of documents. Each document must contain a unique `_id` field. This function will be passed arguments when the client subscribes. (required if you don't pass a cursor function)
 - `cursor`: a function that returns a cursor that implements [`Cursor.observeChanges`][observeChanges]. This function gets arguements when the client subscribes. (required if you dont pass a query function)
 - `ms`: the interval over which to poll an diff. If you dont pass a value, then the subscription must be triggered. (optional)
@@ -175,7 +371,7 @@ DB.publish
       RETURN msg
       ORDER BY msg.createdAt DESC
     """
-  depends: (roomId) -> 
+  depends: (roomId) ->
     ["chatroom:#{roomId}"]
 
 Meteor.methods
@@ -198,7 +394,7 @@ Meteor.methods
 
 #### `sub = DB.createSubscription(name, args...)`
 
-This function returns a `DBSubscriptionCursor` object. 
+This function returns a `DBSubscriptionCursor` object.
 
 - `name`: name of the publication to subscribe to.
 - `args...`: arguments to be passed to the `query`, `cursor`, and `depends` functions in the publication, much like with `Meteor.subscribe` and `Meteor.publish`.
@@ -242,7 +438,7 @@ Meteor.methods
       DB.triggerDeps("chatroom:#{roomId}")
     else
       fields = R.pipe(
-        R.assoc('unverified', true), 
+        R.assoc('unverified', true),
         R.omit(['_id'])
       )(msg)
       @msgs.addedBefore(id, fields, @msgs.docs[0]?._id or null)
@@ -259,13 +455,16 @@ Template.main.events
     elem = t.find('input')
     text = elem.value
     id = Random.hexString(24)
-    Meteor.call 'newMsg', Session.get('roomId'), id, text, (err, result) -> 
+    Meteor.call 'newMsg', Session.get('roomId'), id, text, (err, result) ->
       if err then msgs.handleUndo(id)
     elem.value = ''
 ```
 
 # TODO
 
+- publish unordered collections
+- publish reactive joins
+- client side subscription caching
 - Subscriptions from server to server
 - Use Tracker for pub/sub dependencies
 - Automated tests!
