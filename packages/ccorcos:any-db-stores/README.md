@@ -105,4 +105,4 @@ Meteor.methods
       [{roomId, text, unverified:true}].concat(messages)
 ```
 
-This `store.update` is isomorphic -- on the client it will transform the data within the store but on the server, this function is never called and instead `refreshPub` is called on the appropriate subscriptions.
+This `store.update` is isomorphic -- on the client it will transform the data within the store if a transfrom function is given, but on the server, the transform function is never called and `refreshPub` is called on the appropriate subscriptions. 

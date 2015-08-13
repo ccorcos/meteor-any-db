@@ -181,7 +181,7 @@ if Meteor.isServer
         pub.ready()
         pub.onStop -> handle.stop()
       catch e
-        console.error(e)
+        throw e
         pub.error(new Meteor.Error(33, 'Publication error'))
 
   publishOrderedCursor = (name, getCursor) ->
@@ -194,7 +194,7 @@ if Meteor.isServer
         pub.ready()
         pub.onStop -> handle.stop()
       catch e
-        console.error(e)
+        throw e
         pub.error(new Meteor.Error(33, 'Publication error'))
 
   # XXX We should be caching subscriptions together here somehow.
@@ -234,7 +234,7 @@ if Meteor.isServer
         set([pubKey, pubId, subId], refresh, pubs)
         pub.onStop -> unset([pubKey, pubId, subId], pubs)
       catch e
-        console.error(e)
+        throw e
         pub.error(new Meteor.Error(33, 'Publication error'))
 
   publishOrderedDocuments = (name, fetcher) ->
@@ -256,7 +256,7 @@ if Meteor.isServer
         set([pubKey, pubId, subId], refresh, pubs)
         pub.onStop -> unset([pubKey, pubId, subId], pubs)
       catch e
-        console.error(e)
+        throw e
         pub.error(new Meteor.Error(33, 'Publication error'))
 
   @publish = (name, {ordered, cursor}, fetcher) ->

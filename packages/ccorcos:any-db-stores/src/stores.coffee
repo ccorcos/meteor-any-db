@@ -82,7 +82,7 @@ createCache = (name, minutes=0) ->
   store.get = (query) ->
     data = store.cache.get(query)
     return {
-      data: data
+      data: data or []
       clear: -> store.cache.clear(query)
       fetch: if data then null else (callback) -> store.fetch(query, callback)
     }
@@ -118,7 +118,7 @@ createCache = (name, minutes=0) ->
       fetch = null
 
     return {
-      data: data
+      data: data or []
       clear: -> store.cache.clear(query)
       fetch: fetch
     }
@@ -146,7 +146,7 @@ createCache = (name, minutes=0) ->
     store.get = (query) ->
       data = store.cache.get(query)
       return {
-        data: data
+        data: data or []
         clear: -> store.cache.clear(query)
         fetch: if data then null else (callback) -> store.fetch(query, callback)
         watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
@@ -164,9 +164,10 @@ createCache = (name, minutes=0) ->
 
     # latency compensation
     store.update = (query, transform) ->
-      data = store.cache.get(query)
-      unless isNull(data)
-        store.cache.set(query, transform(data))
+      if transform
+        data = store.cache.get(query)
+        unless isNull(data)
+          store.cache.set(query, transform(data))
 
     store.clear = (query) ->
       store.cache.clear query, ->
@@ -199,7 +200,7 @@ createCache = (name, minutes=0) ->
         fetch = null
 
       return {
-        data: data
+        data: data or []
         clear: -> store.cache.clear(query)
         fetch: fetch
         watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
@@ -223,9 +224,10 @@ createCache = (name, minutes=0) ->
 
     # latency compensation
     store.update = (query, transform) ->
-      data = store.cache.get(query)
-      unless isNull(data)
-        store.cache.set(query, transform(data))
+      if transform
+        data = store.cache.get(query)
+        unless isNull(data)
+          store.cache.set(query, transform(data))
 
     store.clear = (query) ->
       store.cache.clear query, ->
