@@ -58,8 +58,8 @@ if Meteor.isClient
     getInitialState: ->
       {data, fetch, clear, watch} = @props.store.get(@props.query)
     componentWillMount: ->
-      @listener = @state.watch? (nextState) => @setState(nextState)
-      if @state.data.length > 0 or not @state.fetch
+      @listener = @state.watch (nextState) => @setState(nextState)
+      if @state.data or not @state.fetch
         @setState({loading: false})
       else
         @fetch()
@@ -67,7 +67,7 @@ if Meteor.isClient
       @setState({loading:true})
       @state.fetch => @setState({loading:false})
     componentWillUnmount: ->
-      @listener?.stop?()
+      @listener.stop()
       @state.clear()
     render: ->
       @props.render({
@@ -93,7 +93,7 @@ if Meteor.isClient
         @setState({newMsgText:''})
     renderRooms: ({data, loading}) ->
       div {className: 'rooms'},
-        data.map (room) =>
+        data?.map (room) =>
           selected = (if @state.roomId is room._id then 'selected' else '')
           unverified = (if room.unverified then 'unverified' else '')
           className  = "row #{unverified} #{selected}"
@@ -106,7 +106,7 @@ if Meteor.isClient
           (div {className: 'loading'}, 'loading...')
     renderMsgs: ({data, loading, fetch}) ->
       div {className: 'messages'},
-        data.map (msg) =>
+        data?.map (msg) =>
           unverified = (if msg.unverified then 'unverified' else '')
           className  = "row #{unverified}"
           (div {className, key: msg._id,}, msg.text)

@@ -16,7 +16,7 @@ Package.onUse(function(api) {
   ]);
 
   api.use(['coffeescript', 'random', 'id-map']);
-  api.addFiles('src/db.coffee');
+  api.addFiles('src/pub-sub.coffee');
   api.addFiles('src/globals.js');
   api.export(['publish', 'refreshPub'], 'server');
   api.export('subscribe', 'client');

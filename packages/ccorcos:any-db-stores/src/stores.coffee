@@ -82,9 +82,10 @@ createCache = (name, minutes=0) ->
   store.get = (query) ->
     data = store.cache.get(query)
     return {
-      data: data or []
+      data: data
       clear: -> store.cache.clear(query)
       fetch: if data then null else (callback) -> store.fetch(query, callback)
+      watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
     }
 
   store.clear = (query) ->
@@ -118,9 +119,10 @@ createCache = (name, minutes=0) ->
       fetch = null
 
     return {
-      data: data or []
+      data: data
       clear: -> store.cache.clear(query)
       fetch: fetch
+      watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
     }
 
   store.clear = (query) ->
@@ -146,7 +148,7 @@ createCache = (name, minutes=0) ->
     store.get = (query) ->
       data = store.cache.get(query)
       return {
-        data: data or []
+        data: data
         clear: -> store.cache.clear(query)
         fetch: if data then null else (callback) -> store.fetch(query, callback)
         watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
@@ -157,7 +159,7 @@ createCache = (name, minutes=0) ->
       subscribe name, query, {}, (sub) ->
         store.subs.get(query)?()
         store.subs.set(query, sub.stop)
-        store.cache.set(query, sub.data)
+        store.cache.set(query, sub.data or [])
         sub.onChange (data) ->
           store.cache.set(query, data)
         callback?(store.get(query))
@@ -200,7 +202,7 @@ createCache = (name, minutes=0) ->
         fetch = null
 
       return {
-        data: data or []
+        data: data
         clear: -> store.cache.clear(query)
         fetch: fetch
         watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
