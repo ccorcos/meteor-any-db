@@ -1,3 +1,6 @@
+# debug = console.log.bind(console, 'store')
+debug = (->)
+
 serialize = JSON.stringify.bind(JSON)
 clone = (obj) ->
   try
@@ -79,21 +82,26 @@ createCache = (name, minutes=0) ->
   store.cache = createCache(name, minutes)
 
   store.fetch = (query, callback) ->
+    debug('fetch...', name, query)
     fetcher query, (result) ->
+      debug('     ...done', name, query)
       store.cache.set(query, result)
       fdelay(callback)?(store.get(query))
 
   store.get = (query) ->
+    debug('get', name, query)
     data = store.cache.get(query)
     return {
       data: data
-      clear: -> store.cache.clear(query)
+      clear: -> store.clear(query)
       fetch: if data then null else (callback) -> store.fetch(query, callback)
       watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
     }
 
   store.clear = (query) ->
-    store.cache.clear(query)
+    debug('clear', name, query)
+    store.cache.clear query, ->
+      debug('fetch', name, query)
 
   return store
 
@@ -109,7 +117,9 @@ createCache = (name, minutes=0) ->
     if data and data.length >= limit + offset
       offset += limit
       store.paging.set(query, {limit, offset})
+    debug('fetch...', name, query, limit+offset)
     fetcher query, {limit, offset}, (result) ->
+      debug('     ...done', name, query, limit+offset)
       data = (data or []).concat(result or [])
       store.cache.set(query, data)
       fdelay(callback)?(store.get(query))
@@ -117,21 +127,23 @@ createCache = (name, minutes=0) ->
   store.get = (query) ->
     data = store.cache.get(query)
     {limit, offset} = store.paging.get(query) or {limit:LIMIT, offset:0}
-
+    debug('get', name, query, limit+offset)
     fetch = (callback) -> store.fetch(query, callback)
     if data and data.length < limit + offset
       fetch = null
 
     return {
       data: data
-      clear: -> store.cache.clear(query)
+      clear: -> store.clear(query)
       fetch: fetch
       watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
     }
 
   store.clear = (query) ->
+    debug('clear', name, query)
     store.cache.clear query, ->
       # onDelete
+      debug('delete', name, query)
       store.paging.delete(query)
 
   return store
@@ -150,17 +162,20 @@ createCache = (name, minutes=0) ->
     store.subs = createCache()
 
     store.get = (query) ->
+      debug('get', name, query)
       data = store.cache.get(query)
       return {
         data: data
-        clear: -> store.cache.clear(query)
+        clear: -> store.clear(query)
         fetch: if data then null else (callback) -> store.fetch(query, callback)
         watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
       }
 
     store.fetch = (query, callback) ->
+      debug('fetch...', name, query)
       data = store.cache.get(query)
       subscribe name, query, {}, (sub) ->
+        debug('     ...done', name, query)
         store.subs.get(query)?()
         store.subs.set(query, sub.stop)
         store.cache.set(query, sub.data or [])
@@ -170,14 +185,17 @@ createCache = (name, minutes=0) ->
 
     # latency compensation
     store.update = (query, transform) ->
+      debug('update', name, query)
       if transform
         data = store.cache.get(query)
         unless isNull(data)
           store.cache.set(query, transform(data))
 
     store.clear = (query) ->
+      debug('clear', name, query)
       store.cache.clear query, ->
         # onDelete
+        debug('delete', name, query)
         store.subs.get(query)?()
         store.subs.delete(query)
 
@@ -200,6 +218,7 @@ createCache = (name, minutes=0) ->
     store.get = (query) ->
       data = store.cache.get(query)
       {limit, offset} = store.paging.get(query) or {limit:LIMIT, offset:0}
+      debug('get', name, query, limit+offset)
 
       fetch = (callback) -> store.fetch(query, callback)
       if data and data.length < limit + offset
@@ -207,7 +226,7 @@ createCache = (name, minutes=0) ->
 
       return {
         data: data
-        clear: -> store.cache.clear(query)
+        clear: -> store.clear(query)
         fetch: fetch
         watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
       }
@@ -220,7 +239,9 @@ createCache = (name, minutes=0) ->
         offset += limit
         store.paging.set(query, {limit, offset})
 
+      debug('fetch...', name, query, limit+offset)
       subscribe name, query, {limit, offset}, (sub) ->
+        debug('     ...done', name, query, limit+offset)
         store.subs.get(query)?()
         store.subs.set(query, sub.stop)
         store.cache.set(query, sub.data or [])
@@ -230,13 +251,16 @@ createCache = (name, minutes=0) ->
 
     # latency compensation
     store.update = (query, transform) ->
+      debug('update', name, query)
       if transform
         data = store.cache.get(query)
         unless isNull(data)
           store.cache.set(query, transform(data))
 
     store.clear = (query) ->
+      debug('clear', name, query)
       store.cache.clear query, ->
+        debug('delete', name, query)
         store.subs.get(query)?()
         store.subs.delete(query)
         store.paging.delete(query)

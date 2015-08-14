@@ -363,12 +363,13 @@ if Meteor.isClient
         if sub.data then dispatchChange()
         callback?(sub)
       onStop: (e) ->
-        debug('stop', name, query, options)
+        debug('stopped', name, query, options)
         if e then throw(e)
 
     sub.subId = subId = handle.subscriptionId
 
     sub.stop = ->
+      debug('stop', name, query, options)
       sub.listeners = {}
       handle.stop()
       sub.data = []
