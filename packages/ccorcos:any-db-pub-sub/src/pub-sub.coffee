@@ -1,6 +1,7 @@
 DB_KEY = "any-db" # Spoofing a Mongo collection name to hack around DDP
 
-debug = console.log.bind(console, 'pub-sub')
+# debug = console.log.bind(console, 'pub-sub')
+debug = (->)
 
 serialize = JSON.stringify.bind(JSON)
 salter = Random.hexString.bind(Random, 10)
