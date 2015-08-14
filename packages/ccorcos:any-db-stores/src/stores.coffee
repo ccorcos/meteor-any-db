@@ -10,11 +10,6 @@ clone = (obj) ->
 
 delay = (ms, func) -> Meteor.setTimeout(func, ms)
 isNull = (x) -> x is null or x is undefined
-# simulate latency on the client
-SIM_DELAY = Meteor.settings.public.simulated_delay_ms || 0
-fdelay = (f) -> f
-if SIM_DELAY > 0
-  fdelay = (f) -> (args...) -> delay SIM_DELAY, -> f?.apply(null, args)
 
 # This cache survives hot reloads, caches any type of serializable data,
 # supports watching for changes, and will delay before clearing the cache.
@@ -41,6 +36,11 @@ createCache = (name, minutes=0) ->
     key = serialize(query)
     Meteor.clearTimeout(obj.timers[key]?.timerId)
     delete obj.timers[key]
+    return obj._get(query)
+
+  # _get will not clear timeouts.
+  obj._get = (query) ->
+    key = serialize(query)
     return clone(obj.cache[key])
 
   obj.set = (query, value) ->
@@ -77,33 +77,43 @@ createCache = (name, minutes=0) ->
 
   return obj
 
-
+# a cache for counting .gets and .clears to make sure we dont clear a store when
+# one views clears with while something else is still viewing it.
+creactCounts = ->
+  counts = createCache()
+  counts.inc = (query) ->
+    count = (counts.get(query) or 0) + 1
+    counts.set(query, count)
+    return count
+  counts.dec = (query) ->
+    count = counts.get(query) - 1
+    counts.set(query, count)
+    return count
+  return counts
 
 # {data, fetch, clear} = store.get(query)
 @createRESTStore = (name, {minutes}, fetcher) ->
   store = {}
   store.cache = createCache(name, minutes)
-  store.counts = createCache()
+  store.counts = creactCounts()
 
-  response = (query, data) ->
+  respond = (query, data) ->
     data: data
     clear: -> store.clear(query)
     fetch: (callback) -> store.fetch(query, callback)
-    watch: (listener) -> store.cache.watch query, (newData) -> listener(reponse(query, newData))
+    watch: (listener) -> store.cache.watch query, (newData) -> listener(respond(query, newData))
 
   store.get = (query) ->
-    count = (store.counts.get(query) or 0) + 1
-    store.counts.set(query, count)
-    response(query, store.cache.get(query))
+    store.counts.inc(query)
+    respond(query, store.cache.get(query))
 
   store.fetch = (query, callback) ->
     fetcher query, (data) ->
       store.cache.set(query, data)
-      callback?(response(query, data))
+      callback?(respond(query, data))
 
   store.clear = (query) ->
-    count = (store.counts.get(query) or 0) - 1
-    store.counts.set(query, count)
+    count = store.counts.dec(query)
     if count is 0
       store.counts.delete(query)
       store.cache.clear(query)
@@ -111,48 +121,53 @@ createCache = (name, minutes=0) ->
   return store
 
 @createRESTListStore = (name, {limit, minutes}, fetcher) ->
-  LIMIT = limit
   store = {}
+  store.limit = limit
   store.cache = createCache(name, minutes)
   store.paging = createCache(name+'-paging')
+  store.counts = creactCounts()
 
-  store.fetch = (query, callback) ->
-    data = store.cache.get(query)
-    {limit, offset} = store.paging.get(query) or {limit:LIMIT, offset:0}
-    if data and data.length >= limit + offset
-      offset += limit
-      store.paging.set(query, {limit, offset})
-    debug('fetch...', name, query, limit+offset)
-    fetcher query, {limit, offset}, (result) ->
-      debug('     ...done', name, query, limit+offset)
-      data = (data or []).concat(result or [])
-      store.cache.set(query, data)
-      fdelay(callback)?(store.get(query))
-
-  store.get = (query) ->
-    data = store.cache.get(query)
-    {limit, offset} = store.paging.get(query) or {limit:LIMIT, offset:0}
-    debug('get', name, query, limit+offset)
+  respond = (query, data) ->
+    {limit, offset} = store.paging.get(query) or {limit:store.limit, offset:0}
     fetch = (callback) -> store.fetch(query, callback)
-    if data and data.length < limit + offset
-      fetch = null
+    if data
+      if data.length < limit + offset
+        fetch = null
+      else
+        offset += limit
+        store.paging.set(query, {limit, offset})
 
     return {
       data: data
       clear: -> store.clear(query)
       fetch: fetch
-      watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
+      watch: (listener) -> store.cache.watch query, (newData) -> listener(respond(query, newData))
     }
 
+  store.get = (query) ->
+    store.counts.inc(query)
+    respond(query, store.cache.get(query))
+
+  store.fetch = (query, callback) ->
+    # need to get data to append, but only store.get should clear timeouts so
+    # we're using _get just to be save
+    data = store.cache._get(query)
+    {limit, offset} = store.paging.get(query) or {limit:store.limit, offset:0}
+    fetcher query, {limit, offset}, (result) ->
+      console.log query, result
+      data = (data or []).concat(result or [])
+      store.cache.set(query, data)
+      callback?(respond(query, data))
+
   store.clear = (query) ->
-    debug('clear', name, query)
-    store.cache.clear query, ->
-      # onDelete
-      debug('delete', name, query)
-      store.paging.delete(query)
+    # only clear if theres no one else watching!
+    count = store.counts.dec(query)
+    if count is 0
+      store.counts.delete(query)
+      store.cache.clear query, ->
+        store.paging.delete(query)
 
   return store
-
 
 @createDDPStore = (name, {ordered, cursor, minutes}, fetcher) ->
   store = {}
@@ -165,50 +180,52 @@ createCache = (name, minutes=0) ->
   if Meteor.isClient
     store.cache = createCache(name, minutes)
     store.subs = createCache()
+    store.counts = creactCounts()
+
+    respond = (query, data) ->
+      data: data
+      clear: -> store.clear(query)
+      fetch: if data then null else (callback) -> store.fetch(query, callback)
+      watch: (listener) -> store.cache.watch query, (newData) -> listener(respond(query, newData))
 
     store.get = (query) ->
-      debug('get', name, query)
-      data = store.cache.get(query)
-      return {
-        data: data
-        clear: -> store.clear(query)
-        fetch: if data then null else (callback) -> store.fetch(query, callback)
-        watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
-      }
+      store.counts.inc(query)
+      respond(query, store.cache.get(query))
 
     store.fetch = (query, callback) ->
-      debug('fetch...', name, query)
-      data = store.cache.get(query)
       subscribe name, query, {}, (sub) ->
-        debug('     ...done', name, query)
+        # stop the old subscription
         store.subs.get(query)?()
+        # set the new subscription
         store.subs.set(query, sub.stop)
         store.cache.set(query, sub.data or [])
         sub.onChange (data) ->
           store.cache.set(query, data)
-        fdelay(callback)?(store.get(query))
+        callback?(respond(query, sub.data))
 
     # latency compensation
     store.update = (query, transform) ->
-      debug('update', name, query)
       if transform
-        data = store.cache.get(query)
+        # latency compensation can happen when a cached subscroption is waiting
+        # to be cleared, so we'll want to make sure no to call .get
+        data = store.cache._get(query)
         unless isNull(data)
           store.cache.set(query, transform(data))
 
     store.clear = (query) ->
-      debug('clear', name, query)
-      store.cache.clear query, ->
-        # onDelete
-        debug('delete', name, query)
-        store.subs.get(query)?()
-        store.subs.delete(query)
+      count = store.counts.dec(query)
+      if count is 0
+        store.counts.delete(query)
+        store.cache.clear query, ->
+          # stop subscription
+          store.subs.get(query)?()
+          store.subs.delete(query)
 
     return store
 
 @createDDPListStore = (name, {ordered, cursor, minutes, limit}, fetcher) ->
   store = {}
-  LIMIT = limit
+  store.limit = limit
 
   if Meteor.isServer
     publish(name, {ordered, cursor}, fetcher)
@@ -219,55 +236,56 @@ createCache = (name, minutes=0) ->
     store.cache = createCache(name, minutes)
     store.subs = createCache()
     store.paging = createCache(name+'-paging')
+    store.counts = creactCounts()
 
-    store.get = (query) ->
-      data = store.cache.get(query)
-      {limit, offset} = store.paging.get(query) or {limit:LIMIT, offset:0}
-      debug('get', name, query, limit+offset)
-
+    respond = (query, data) ->
+      {limit, offset} = store.paging.get(query) or {limit:store.limit, offset:0}
       fetch = (callback) -> store.fetch(query, callback)
-      if data and data.length < limit + offset
-        fetch = null
+      if data
+        if data.length < limit + offset
+          fetch = null
+        else
+          offset += limit
+          store.paging.set(query, {limit, offset})
 
       return {
         data: data
         clear: -> store.clear(query)
         fetch: fetch
-        watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
+        watch: (listener) -> store.cache.watch query, (newData) -> listener(respond(query, newData))
       }
 
+    store.get = (query) ->
+      store.counts.inc(query)
+      respond(query, store.cache.get(query))
+
     store.fetch = (query, callback) ->
-      data = store.cache.get(query)
-      {limit, offset} = store.paging.get(query) or {limit:LIMIT, offset:0}
-
-      if data and data.length >= limit + offset
-        offset += limit
-        store.paging.set(query, {limit, offset})
-
-      debug('fetch...', name, query, limit+offset)
+      {limit, offset} = store.paging.get(query) or {limit:store.limit, offset:0}
       subscribe name, query, {limit, offset}, (sub) ->
-        debug('     ...done', name, query, limit+offset)
+        # stop the old subscription
         store.subs.get(query)?()
+        # set the new subscription
         store.subs.set(query, sub.stop)
         store.cache.set(query, sub.data or [])
         sub.onChange (data) ->
           store.cache.set(query, data)
-        fdelay(callback)?(store.get(query))
+        callback?(respond(query, sub.data))
 
     # latency compensation
     store.update = (query, transform) ->
-      debug('update', name, query)
       if transform
-        data = store.cache.get(query)
+        data = store.cache._get(query)
         unless isNull(data)
           store.cache.set(query, transform(data))
 
     store.clear = (query) ->
-      debug('clear', name, query)
-      store.cache.clear query, ->
-        debug('delete', name, query)
-        store.subs.get(query)?()
-        store.subs.delete(query)
+      count = store.counts.dec(query)
+      if count is 0
+        store.counts.delete(query)
+        store.cache.clear query, ->
+          # stop subscription
+          store.subs.get(query)?()
+          store.subs.delete(query)
         store.paging.delete(query)
 
     return store
