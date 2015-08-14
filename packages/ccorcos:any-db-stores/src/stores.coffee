@@ -17,7 +17,9 @@ if SIM_DELAY > 0
   fdelay = (f) -> (args...) -> delay SIM_DELAY, -> f?.apply(null, args)
 
 # This cache survives hot reloads, caches any type of serializable data,
-# supports watching for changes, and will delay before clearing the cache
+# supports watching for changes, and will delay before clearing the cache.
+# call .get as many times as you want. .clear will set a timer unless .get
+# is called before its times out.
 createCache = (name, minutes=0) ->
   obj = {}
   obj.timers = {}
@@ -76,32 +78,35 @@ createCache = (name, minutes=0) ->
   return obj
 
 
+
 # {data, fetch, clear} = store.get(query)
 @createRESTStore = (name, {minutes}, fetcher) ->
   store = {}
   store.cache = createCache(name, minutes)
+  store.counts = createCache()
 
-  store.fetch = (query, callback) ->
-    debug('fetch...', name, query)
-    fetcher query, (result) ->
-      debug('     ...done', name, query)
-      store.cache.set(query, result)
-      fdelay(callback)?(store.get(query))
+  response = (query, data) ->
+    data: data
+    clear: -> store.clear(query)
+    fetch: (callback) -> store.fetch(query, callback)
+    watch: (listener) -> store.cache.watch query, (newData) -> listener(reponse(query, newData))
 
   store.get = (query) ->
-    debug('get', name, query)
-    data = store.cache.get(query)
-    return {
-      data: data
-      clear: -> store.clear(query)
-      fetch: if data then null else (callback) -> store.fetch(query, callback)
-      watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
-    }
+    count = (store.counts.get(query) or 0) + 1
+    store.counts.set(query, count)
+    response(query, store.cache.get(query))
+
+  store.fetch = (query, callback) ->
+    fetcher query, (data) ->
+      store.cache.set(query, data)
+      callback?(response(query, data))
 
   store.clear = (query) ->
-    debug('clear', name, query)
-    store.cache.clear query, ->
-      debug('fetch', name, query)
+    count = (store.counts.get(query) or 0) - 1
+    store.counts.set(query, count)
+    if count is 0
+      store.counts.delete(query)
+      store.cache.clear(query)
 
   return store
 
