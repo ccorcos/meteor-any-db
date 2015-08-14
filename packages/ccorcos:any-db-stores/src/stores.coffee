@@ -7,7 +7,11 @@ clone = (obj) ->
 
 delay = (ms, func) -> Meteor.setTimeout(func, ms)
 isNull = (x) -> x is null or x is undefined
-
+# simulate latency on the client
+SIM_DELAY = Meteor.settings.public.simulated_delay_ms || 0
+fdelay = (f) -> f
+if SIM_DELAY > 0
+  fdelay = (f) -> (args...) -> delay SIM_DELAY, -> f?.apply(null, args)
 
 # This cache survives hot reloads, caches any type of serializable data,
 # supports watching for changes, and will delay before clearing the cache
@@ -77,7 +81,7 @@ createCache = (name, minutes=0) ->
   store.fetch = (query, callback) ->
     fetcher query, (result) ->
       store.cache.set(query, result)
-      callback?(store.get(query))
+      fdelay(callback)?(store.get(query))
 
   store.get = (query) ->
     data = store.cache.get(query)
@@ -85,7 +89,7 @@ createCache = (name, minutes=0) ->
       data: data
       clear: -> store.cache.clear(query)
       fetch: if data then null else (callback) -> store.fetch(query, callback)
-      watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
+      watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
     }
 
   store.clear = (query) ->
@@ -108,7 +112,7 @@ createCache = (name, minutes=0) ->
     fetcher query, {limit, offset}, (result) ->
       data = (data or []).concat(result or [])
       store.cache.set(query, data)
-      callback?(store.get(query))
+      fdelay(callback)?(store.get(query))
 
   store.get = (query) ->
     data = store.cache.get(query)
@@ -122,7 +126,7 @@ createCache = (name, minutes=0) ->
       data: data
       clear: -> store.cache.clear(query)
       fetch: fetch
-      watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
+      watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
     }
 
   store.clear = (query) ->
@@ -151,7 +155,7 @@ createCache = (name, minutes=0) ->
         data: data
         clear: -> store.cache.clear(query)
         fetch: if data then null else (callback) -> store.fetch(query, callback)
-        watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
+        watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
       }
 
     store.fetch = (query, callback) ->
@@ -162,7 +166,7 @@ createCache = (name, minutes=0) ->
         store.cache.set(query, sub.data or [])
         sub.onChange (data) ->
           store.cache.set(query, data)
-        callback?(store.get(query))
+        fdelay(callback)?(store.get(query))
 
     # latency compensation
     store.update = (query, transform) ->
@@ -205,7 +209,7 @@ createCache = (name, minutes=0) ->
         data: data
         clear: -> store.cache.clear(query)
         fetch: fetch
-        watch: (listener) -> store.cache.watch query, -> listener(store.get(query))
+        watch: (listener) -> store.cache.watch query, fdelay -> listener(store.get(query))
       }
 
     store.fetch = (query, callback) ->
@@ -222,7 +226,7 @@ createCache = (name, minutes=0) ->
         store.cache.set(query, sub.data or [])
         sub.onChange (data) ->
           store.cache.set(query, data)
-        callback?(store.get(query))
+        fdelay(callback)?(store.get(query))
 
     # latency compensation
     store.update = (query, transform) ->

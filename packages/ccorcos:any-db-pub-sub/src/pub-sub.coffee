@@ -1,5 +1,7 @@
 DB_KEY = "any-db" # Spoofing a Mongo collection name to hack around DDP
 
+debug = console.log.bind(console, 'pub-sub')
+
 serialize = JSON.stringify.bind(JSON)
 salter = Random.hexString.bind(Random, 10)
 clone = (obj) -> JSON.parse(JSON.stringify(obj))
@@ -356,10 +358,12 @@ if Meteor.isClient
 
     handle = Meteor.subscribe name, query, options,
       onReady: ->
+        debug('ready', name, query, options)
         sub.ready = true
         if sub.data then dispatchChange()
         callback?(sub)
       onStop: (e) ->
+        debug('stop', name, query, options)
         if e then throw(e)
 
     sub.subId = subId = handle.subscriptionId
@@ -379,6 +383,7 @@ if Meteor.isClient
     return sub
 
   resetSubs = ->
+    debug('reset')
     for subId, sub of subs
       sub.reset()
 
