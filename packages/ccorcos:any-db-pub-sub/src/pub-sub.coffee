@@ -276,21 +276,18 @@ if Meteor.isServer
 
 if Meteor.isClient
 
-  subs = {}
+  @subs = {}
 
   # Find a certain document by id, whereever it may be in any subscription.
   findDoc = (id) ->
     for subId, sub of subs
       if sub.dataIds[id]
-        if isArray(sub.data)
-          i = findDocIdIndex(id, sub.data)
-          return clone(sub.data[i])
-        else
-          return clone(sub.data[id])
+        i = findDocIdIndex(id, sub.data)
+        return clone(sub.data[i])
     return undefined
 
   @subscribe = (name, query, options, callback) ->
-    sub = {}
+    sub = {name, query, options}
     sub.data = []
     sub.dataIds = {}
     sub.ready = false

@@ -154,7 +154,6 @@ creactCounts = ->
     data = store.cache._get(query)
     {limit, offset} = store.paging.get(query) or {limit:store.limit, offset:0}
     fetcher query, {limit, offset}, (result) ->
-      console.log query, result
       data = (data or []).concat(result or [])
       store.cache.set(query, data)
       callback?(respond(query, data))
