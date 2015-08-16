@@ -5,7 +5,7 @@ blaze@2.1.2
 blaze-tools@1.0.3
 boilerplate-generator@1.0.3
 callback-hook@1.0.3
-ccorcos:any-db-pub-sub@0.1.0
+ccorcos:any-db-pub-sub@0.0.1
 check@1.0.5
 coffeescript@1.0.6
 cosmos:browserify@0.4.0

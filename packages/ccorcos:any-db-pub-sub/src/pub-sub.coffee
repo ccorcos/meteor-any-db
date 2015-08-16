@@ -4,8 +4,16 @@ DB_KEY = "any-db" # Spoofing a Mongo collection name to hack around DDP
 debug = (->)
 
 serialize = JSON.stringify.bind(JSON)
+deserialize = JSON.parse.bind(JSON)
 salter = Random.hexString.bind(Random, 10)
-clone = (obj) -> JSON.parse(JSON.stringify(obj))
+# clone only serializable data
+cloneData = (obj) -> JSON.parse(JSON.stringify(obj))
+
+mapObj = (obj, func) ->
+  newObj = {}
+  for k,v of obj
+    newObj[k] = func(k,v,obj)
+  return newObj
 
 # mutably set a value of an object given an array of keys
 set = (path, value, object) ->
@@ -49,6 +57,9 @@ isArray = (x) ->
 isPlainObject = (x) ->
   Object.prototype.toString.apply(x) is '[object Object]'
 
+isFunction = (x) ->
+  Object.prototype.toString.apply(x) is '[object Function]'
+
 # mutable deep extend
 extendDeep = (dest, obj) ->
   for k,v of obj
@@ -83,7 +94,7 @@ memoize = (f) ->
 
 # unflatten DDP fields into a deep object
 fields2Obj = (fields={}) ->
-  fields = clone(fields)
+  fields = cloneData(fields)
   dest = {}
   for key,value of fields
     keys = key.split('.').reverse()
@@ -109,7 +120,7 @@ obj2Fields = (obj={}) ->
       for k,v of deeperFields
         dest["#{key}.#{k}"] = v
     else
-      dest[key] = clone(value)
+      dest[key] = cloneData(value)
   return dest
 
 # some weird stuff going on with DDP
@@ -143,10 +154,9 @@ parseDDPMsg = (msg) ->
         before = value.split('.')[1]
         if before is "null" then before = null
         positions[subId] = before
-  fields = clone(msg.fields)
+  fields = cloneData(msg.fields)
   delete fields[DB_KEY]
   return {id, fields, positions, cleared}
-
 
 # publishing from the server
 if Meteor.isServer
@@ -175,12 +185,16 @@ if Meteor.isServer
       pub.removed(DB_KEY, id)
 
   publishUnorderedCursor = (name, getCursor) ->
-    Meteor.publish name, (query, options) ->
+    Meteor.publish name, (query) ->
+      # undefined comes through as null and this is annoying when you
+      # want to call refreshPub
+      if query is null then query = undefined
+
       pub = this
       try
         subId = pub._subscriptionId
         observer = createUnorderedObserver(pub, subId)
-        handle = getCursor.call(pub, query, options).observeChanges(observer)
+        handle = getCursor.call(pub, query).observeChanges(observer)
         pub.ready()
         pub.onStop -> handle.stop()
       catch e
@@ -188,45 +202,51 @@ if Meteor.isServer
         pub.error(new Meteor.Error(33, 'Publication error'))
 
   publishOrderedCursor = (name, getCursor) ->
-    Meteor.publish name, (query, options) ->
+    Meteor.publish name, (query) ->
+      # undefined comes through as null and this is annoying when you
+      # want to call refreshPub
+      if query is null then query = undefined
+
       pub = this
       try
         subId = pub._subscriptionId
         observer = createOrderedObserver(pub, subId)
-        handle = getCursor.call(pub, query, options).observeChanges(observer)
+        handle = getCursor.call(pub, query).observeChanges(observer)
         pub.ready()
         pub.onStop -> handle.stop()
       catch e
         throw e
         pub.error(new Meteor.Error(33, 'Publication error'))
 
-  # XXX We should be caching subscriptions together here somehow.
 
-  # pubs[pubKey][pubId][subId] = refresh
-  # pubKey doesnt serialize the options so you can specify a publication to
-  # refresh regardless of the paging. pubId includes the options which will
-  # eventually allow us to cache subscriptions hopefully. SubId is the specific
-  # id of that sub from the client.
-  pubs = {}
+  # pubs[name][serialize(query)][subId] = refresh
+  @pubs = {}
 
-  # refresh all pubs of a given name and query. Its important that if the
-  # current userId is relevant, then it needs to be included in the query
-  # and checked against this.userId.
-  @refreshPub = (name, query) ->
-    pubKey = serialize([name, query])
-    for pubId, subs of pubs[pubKey]
-      for subId, refresh of subs
-        refresh()
+  # we can pass a function to filter queries, or we can pass a value and
+  # simply compare the value of the query.
+  @refreshPub = (name, cond) ->
+    if isFunction(cond)
+      Object.keys(pubs[name])
+        .map(deserialize)
+        .filter(cond)
+        .map(serialize)
+        .map (query) ->
+          mapObj pubs[name]?[query], (subId, refresh) -> refresh()
+    else
+      query = serialize(cond)
+      mapObj pubs[name]?[query], (subId, refresh) -> refresh()
 
   publishUnorderedDocuments = (name, fetcher) ->
-    Meteor.publish name, (query, options) ->
+    Meteor.publish name, (query) ->
+      # undefined comes through as null and this is annoying when you
+      # want to call refreshPub
+      if query is null then query = undefined
+
       pub = this
       try
-        pubKey = serialize([name, query])
-        pubId = serialize([name, query, options])
         subId = pub._subscriptionId
         docs = new IdMap()
-        fetch = -> docs2IdMap(fetcher.call(pub, query, options))
+        fetch = -> docs2IdMap(fetcher.call(pub, query))
         observer = createUnorderedObserver(pub, subId)
         refresh = ->
           newDocs = fetch()
@@ -234,21 +254,23 @@ if Meteor.isServer
           docs = newDocs
         refresh()
         pub.ready()
-        set([pubKey, pubId, subId], refresh, pubs)
-        pub.onStop -> unset([pubKey, pubId, subId], pubs)
+        set([name, serialize(query), subId], refresh, pubs)
+        pub.onStop -> unset([name, serialize(query), subId], pubs)
       catch e
         throw e
         pub.error(new Meteor.Error(33, 'Publication error'))
 
   publishOrderedDocuments = (name, fetcher) ->
-    Meteor.publish name, (query, options) ->
+    Meteor.publish name, (query) ->
+      # undefined comes through as null and this is annoying when you
+      # want to call refreshPub
+      if query is null then query = undefined
+
       try
         pub = this
-        pubKey = serialize([name, query])
-        pubId = serialize([name, query, options])
         subId = pub._subscriptionId
         docs = []
-        fetch = -> fetcher.call(pub, query, options)
+        fetch = -> fetcher.call(pub, query)
         observer = createOrderedObserver(pub, subId)
         refresh = ->
           newDocs = fetch()
@@ -256,8 +278,8 @@ if Meteor.isServer
           docs = newDocs
         refresh()
         pub.ready()
-        set([pubKey, pubId, subId], refresh, pubs)
-        pub.onStop -> unset([pubKey, pubId, subId], pubs)
+        set([name, serialize(query), subId], refresh, pubs)
+        pub.onStop -> unset([name, serialize(query), subId], pubs)
       catch e
         throw e
         pub.error(new Meteor.Error(33, 'Publication error'))
@@ -276,21 +298,22 @@ if Meteor.isServer
 
 if Meteor.isClient
 
+  # subs[subId] = subObject
   @subs = {}
 
-  # Find a certain document by id, whereever it may be in any subscription.
+  # Find a certain document by id, where ever it may be in any subscription.
   findDoc = (id) ->
     for subId, sub of subs
       if sub.dataIds[id]
         i = findDocIdIndex(id, sub.data)
-        return clone(sub.data[i])
+        return cloneData(sub.data[i])
     return undefined
 
-  @subscribe = (name, query, options, callback) ->
-    sub = {name, query, options}
-    sub.data = []
-    sub.dataIds = {}
-    sub.ready = false
+  @subscribe = (name, query, callback) ->
+    sub = {name, query}   # name and query are useful here just for debugging
+    sub.data = []         # subscriptions always return collections
+    sub.dataIds = {}      # keep track of which id's belong to this subscription
+    sub.ready = false     # don't fire onChange methods until the subscription is ready
 
     # onChange listeners
     sub.listeners = {}
@@ -301,7 +324,10 @@ if Meteor.isClient
     dispatchChange = ->
       if sub.ready
         for id, f of sub.listeners
-          f(clone(sub.data))
+          f(cloneData(sub.data))
+
+    # The following observer methods will be called as DDP messages come in
+    # via Meteor.connection.registerStore
 
     # unordered publications
     sub.added = (id, fields) ->
@@ -321,7 +347,7 @@ if Meteor.isClient
       else
         i = findDocIdIndex(before, sub.data)
         if i < 0 then throw new Error("Expected to find before id, #{before}")
-        sub.data = clone(sub.data)
+        sub.data = cloneData(sub.data)
         sub.data.splice(i,0,doc)
       dispatchChange()
 
@@ -329,7 +355,7 @@ if Meteor.isClient
     sub.movedBefore = (id, before) ->
       fromIndex = findDocIdIndex(id, sub.data)
       if fromIndex < 0 then throw new Error("Expected to find id: #{id}")
-      sub.data = clone(sub.data)
+      sub.data = cloneData(sub.data)
       doc = sub.data[fromIndex]
       sub.data.splice(fromIndex, 1)
       if before is null
@@ -341,7 +367,7 @@ if Meteor.isClient
       dispatchChange()
 
     sub.changed = (id, fields) ->
-      sub.data = clone(sub.data)
+      sub.data = cloneData(sub.data)
       i = findDocIdIndex(id, sub.data)
       if i < 0 then throw new Error("Expected to find id: #{id}")
       changeDoc(sub.data[i], fields)
@@ -354,31 +380,32 @@ if Meteor.isClient
       delete sub.dataIds[id]
       dispatchChange()
 
-    handle = Meteor.subscribe name, query, options,
+    handle = Meteor.subscribe name, query,
       onReady: ->
-        debug('ready', name, query, options)
+        debug('ready', name, query)
         sub.ready = true
-        if sub.data then dispatchChange()
+        dispatchChange()
         callback?(sub)
       onStop: (e) ->
-        debug('stopped', name, query, options)
+        debug('stopped', name, query)
         if e then throw(e)
 
-    sub.subId = subId = handle.subscriptionId
+    sub.subId = handle.subscriptionId
 
     sub.stop = ->
-      debug('stop', name, query, options)
+      debug('stop', name, query)
       sub.listeners = {}
       handle.stop()
       sub.data = []
       sub.dataIds = {}
-      unset([subId], subs)
+      delete subs[sub.subId]
 
     sub.reset = ->
       sub.data = []
       sub.dataIds = {}
+      # dispatchChange()
 
-    set([subId], sub, subs)
+    subs[sub.subId] = sub
     return sub
 
   resetSubs = ->
@@ -423,7 +450,7 @@ if Meteor.isClient
             sub.movedBefore(id, before)
           else
             doc = lookup(id)
-            fields = clone(doc)
+            fields = cloneData(doc)
             delete fields['_id']
             if before is 'true'
               sub.added(id, fields)
