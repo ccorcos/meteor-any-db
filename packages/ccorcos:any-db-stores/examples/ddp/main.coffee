@@ -5,7 +5,8 @@ if Meteor.isServer
 
 # a cursor, ordered publication
 @RoomsStore = createDDPStore 'rooms', {minutes:2, ordered:true, cursor:true}, () ->
-  syncDelay 500, -> Rooms.find({}, {sort:{createdAt:-1}})
+  Meteor._sleepForMs(500)
+  Rooms.find({}, {sort:{createdAt:-1}})
 
 # a non-cursor, unordered publication
 @MessagesStore = createDDPListStore 'messages', {
@@ -13,8 +14,10 @@ if Meteor.isServer
     limit:5,
     ordered:true,
     cursor:false
-  }, (roomId, {limit, offset}) ->
-    syncDelay 500, -> Messages.find({roomId}, {sort:{createdAt:-1}, limit:limit+offset}).fetch()
+  }, ({query, limit, offset}) ->
+    roomId = query
+    Meteor._sleepForMs(500)
+    Messages.find({roomId}, {sort:{createdAt:-1}, limit:limit+offset}).fetch()
 
 Meteor.methods
   newRoom: (name) ->
@@ -30,8 +33,10 @@ Meteor.methods
     check(text, String)
     if Meteor.isServer
       Messages.insert({roomId, text, createdAt: Date.now()})
-    MessagesStore.update roomId, (messages) ->
-      [{_id:Random.hexString(10), roomId, text, createdAt:Date.now(), unverified:true}].concat(messages)
+    MessagesStore.update(
+      ({query}) -> query is roomId
+      (messages) -> [{_id:Random.hexString(10), roomId, text, createdAt:Date.now(), unverified:true}].concat(messages)
+    )
 
 if Meteor.isClient
 
