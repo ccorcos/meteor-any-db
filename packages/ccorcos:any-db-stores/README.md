@@ -16,7 +16,8 @@ WeatherStore = createRESTStore 'weather', {minutes:2}, (place, callback) ->
 - createRESTListStore
 
 ```coffee
-FacebookUserStore = createRESTListStore 'facebook-users', {minutes:2, limit:10}, (name, {limit, offset}, callback) ->
+FacebookUserStore = createRESTListStore 'facebook-users', {minutes:2, limit:10}, ({query, limit, offset}, callback) ->
+  name = query
   HTTP.get 'https://graph.facebook.com/v2.4/search', {params:{
     fields: 'name,picture{url}'
     type: 'user'
@@ -40,7 +41,8 @@ PostStore = createDDPStore 'posts', {ordered:false, cursor:false, minutes:2}, ([
 - createDDPListStore
 
 ```coffee
-MessageStore = createDDPStore 'messages', {ordered:true, cursor:false, minutes:2}, (roomId, {limit, offset}) ->
+MessageStore = createDDPStore 'messages', {ordered:true, cursor:false, minutes:2}, ({query, limit, offset}) ->
+  roomId = query
   Messages.find({roomId:roomId}, {limit: limit+offset, sort:{createdAt:-1}}).fetch()
 ```
 
@@ -105,4 +107,4 @@ Meteor.methods
       [{roomId, text, unverified:true}].concat(messages)
 ```
 
-This `store.update` is isomorphic -- on the client it will transform the data within the store if a transfrom function is given, but on the server, the transform function is never called and `refreshPub` is called on the appropriate subscriptions. 
+This `store.update` is isomorphic -- on the client it will transform the data within the store if a transfrom function is given, but on the server, the transform function is never called and `refreshPub` is called on the appropriate subscriptions.

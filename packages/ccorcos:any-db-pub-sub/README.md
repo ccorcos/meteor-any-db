@@ -44,3 +44,5 @@ Meteor.methods
 ```
 
 This will not do latency compensation on the client, but it will make sure that the changes get updated on the client as soon as possible. If you want latency compensation on the client, this is something you can easily implement yourself around this package.
+
+You can also pass a function to `refreshPub` to filter queries to refresh. This is particularly useful when there are paging parameters, etc.

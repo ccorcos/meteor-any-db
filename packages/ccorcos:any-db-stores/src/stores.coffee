@@ -260,6 +260,9 @@ createCache = (name, minutes=0) ->
     return store
 
 
+# This is a little finicky here. The fetcher get {query, limit, offset}.
+# But the subscription locally just gets query. So on the server, we use
+# a shim to update match the query while on the client, its just the query anyways.
 @createDDPListStore = (name, {ordered, cursor, minutes, limit}, fetcher) ->
   store = createRESTListStore(name, {limit, minutes}, fetcher)
 

@@ -225,16 +225,17 @@ if Meteor.isServer
   # we can pass a function to filter queries, or we can pass a value and
   # simply compare the value of the query.
   @refreshPub = (name, cond) ->
-    if isFunction(cond)
-      Object.keys(pubs[name])
-        .map(deserialize)
-        .filter(cond)
-        .map(serialize)
-        .map (query) ->
-          mapObj pubs[name]?[query], (subId, refresh) -> refresh()
-    else
-      query = serialize(cond)
-      mapObj pubs[name]?[query], (subId, refresh) -> refresh()
+    if pubs[name]
+      if isFunction(cond)
+        Object.keys(pubs[name])
+          .map(deserialize)
+          .filter(cond)
+          .map(serialize)
+          .map (query) ->
+            mapObj pubs[name]?[query], (subId, refresh) -> refresh()
+      else
+        query = serialize(cond)
+        mapObj pubs[name][query], (subId, refresh) -> refresh()
 
   publishUnorderedDocuments = (name, fetcher) ->
     Meteor.publish name, (query) ->
