@@ -33,10 +33,8 @@ Meteor.methods
     check(text, String)
     if Meteor.isServer
       Messages.insert({roomId, text, createdAt: Date.now()})
-    MessagesStore.update(
-      ({query}) -> query is roomId
+    MessagesStore.update roomId,
       (messages) -> [{_id:Random.hexString(10), roomId, text, createdAt:Date.now(), unverified:true}].concat(messages)
-    )
 
 if Meteor.isClient
 

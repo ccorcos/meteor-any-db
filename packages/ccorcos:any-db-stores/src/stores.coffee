@@ -265,7 +265,8 @@ createCache = (name, minutes=0) ->
 
   if Meteor.isServer
     publish(name, {ordered, cursor}, fetcher)
-    store.update = (cond) -> refreshPub(name, cond)
+    store.update = (cond) ->
+      refreshPub name, ({query}) -> query is cond or cond?(query)
     return store
 
   if Meteor.isClient
