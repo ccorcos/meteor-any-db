@@ -16,6 +16,7 @@ Package.onUse(function(api) {
     'createRESTStore',
     'createRESTListStore',
     'createDDPStore',
-    'createDDPListStore'
+    'createDDPListStore',
+    'createCache'
   ])
 });

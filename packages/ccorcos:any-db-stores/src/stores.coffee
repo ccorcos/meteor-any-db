@@ -51,7 +51,7 @@ mapObj = (obj, func) ->
 # - .clear will start a timer
 # - .delete will clear immediately
 # - survives hot code pushes given a unique name
-createCache = (name, minutes=0) ->
+@createCache = createCache = (name, minutes=0) ->
   obj = {minutes}
   obj.timers = {}      # obj.timers[serialize(query)] = {timerId, delete}
   obj.listeners = {}   # obj.listeners[serialize(query)] = {id: func(data)}
@@ -170,6 +170,7 @@ createCache = (name, minutes=0) ->
     unless count > 0
       store.counts.delete(query) # clean up immediately
       store.cache.clear(query, onDelete)
+      onDelete?()
 
   return store
 
@@ -277,7 +278,9 @@ createCache = (name, minutes=0) ->
 
     store.fetch = (query, callback) ->
       {limit, offset} = store.paging.get(query) or {limit:store.limit, offset:0}
+      debug 'subscribe', name, query, limit + offset
       subscribe name, {query, limit, offset}, (sub) ->
+        debug 'stop prev sub', name, query
         store.subs.get(query)?()           # stop the old subscription
         store.subs.set(query, sub.stop)    # set the new subscription
         store.cache.set(query, sub.data or [])
@@ -298,7 +301,9 @@ createCache = (name, minutes=0) ->
     # stop the subscription and cleanup paging onDelete
     clear = store.clear
     store.clear = (query, onDelete) ->
+      debug 'clear', name, query
       clear query, ->
+        debug 'delete', name, query
         # stop subscription
         store.subs.get(query)?()
         store.subs.delete(query)
