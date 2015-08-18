@@ -7,7 +7,7 @@ serialize = JSON.stringify.bind(JSON)
 deserialize = JSON.parse.bind(JSON)
 salter = Random.hexString.bind(Random, 10)
 # clone only serializable data
-cloneData = (obj) -> JSON.parse(JSON.stringify(obj))
+cloneData = (obj={}) -> JSON.parse(JSON.stringify(obj))
 
 mapObj = (obj, func) ->
   newObj = {}
