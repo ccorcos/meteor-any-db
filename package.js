@@ -1,26 +1,24 @@
 Package.describe({
   name: 'ccorcos:any-db',
-  summary: 'A database API for Meteor',
-  version: '0.0.1',
+  summary: 'Publish and subscribe ordered collections.',
+  version: '0.1.0',
   git: 'https://github.com/ccorcos/meteor-any-db'
 });
 
 Package.onUse(function(api) {
-  api.versionsFrom('1.0');
-  both = ['client', 'server']
+  api.versionsFrom('1.2');
 
-  // until the next version of meteor comes out
-  api.export('DiffSequence');
-  api.use(['underscore', 'ejson']);
-  api.addFiles([
-    'diff.js'
+  api.use([
+    'coffeescript',
+    'random',
+    'id-map',
+    'diff-sequence',
+    'meteorhacks:unblock@1.1.0',
+    'ccorcos:utils@0.0.1'
   ]);
 
-  api.export('DB');
-  api.use([
-    'coffeescript', 
-    'ramda:ramda@0.13.0',
-    // 'diff-sequence',
-  ], both);
-  api.addFiles('src/db.coffee', both);
+  api.addFiles(['globals.js']);
+  api.addFiles(['pub.coffee'], 'server');
+  api.addFiles(['sub.coffee'], 'client');
+  api.export(['AnyDb']);
 });
