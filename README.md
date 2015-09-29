@@ -1,4 +1,4 @@
-# Meteor Any-DB
+# Meteor Any-Db
 
 This package allows you to use Meteor with any **database** or **data source**.
 

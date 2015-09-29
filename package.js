@@ -20,5 +20,6 @@ Package.onUse(function(api) {
   api.addFiles(['globals.js']);
   api.addFiles(['pub.coffee'], 'server');
   api.addFiles(['sub.coffee'], 'client');
+  
   api.export(['AnyDb']);
 });

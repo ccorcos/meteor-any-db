@@ -28,7 +28,7 @@ changeDoc = (doc, fields) ->
 # subs[subId] = subObject
 AnyDb.subs = {}
 
-AnyDb.subscribe = (name, query, callback) ->
+AnyDb.subscribe = (name, query, onReady) ->
   sub = {name, query}   # name and query are useful here just for debugging
   sub.data = []         # subscriptions always return collections
   sub.dataIds = {}      # keep track of which id's belong to this subscription
@@ -100,7 +100,7 @@ AnyDb.subscribe = (name, query, callback) ->
         debug('ready', name, sub.subId, lap(), 's')
         sub.ready = true
         dispatchChange()
-        callback?(sub)
+        onReady?(sub)
       onStop: (e) ->
         debug('stopped', name, sub.subId)
         if e then throw(e)
