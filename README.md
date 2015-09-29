@@ -2,6 +2,8 @@
 
 This package allows you to use Meteor with any **database** or **data source**.
 
+[Check out this article](https://medium.com/p/feb09105c343/).
+
 # Getting Started
 
 Simply add this package to your project:
