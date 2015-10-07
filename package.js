@@ -14,7 +14,7 @@ Package.onUse(function(api) {
     'id-map',
     'diff-sequence',
     'meteorhacks:unblock@1.1.0',
-    'ccorcos:utils@0.0.1'
+    'ccorcos:utils@0.0.2'
   ]);
 
   api.addFiles(['globals.js']);
