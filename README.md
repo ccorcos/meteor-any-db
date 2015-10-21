@@ -1,3 +1,5 @@
+[![Meteor Icon](http://icon.meteor.com/package/ccorcos:any-db)](https://atmospherejs.com/ccorcos/any-db)
+
 # Meteor Any-Db
 
 This package allows you to use Meteor with any **database** or **data source**.
