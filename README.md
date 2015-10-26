@@ -1,43 +1,75 @@
-[![Meteor Icon](http://icon.meteor.com/package/ccorcos:any-db)](https://atmospherejs.com/ccorcos/any-db)
+# Any-Db-Client
 
-# Meteor Any-Db
-
-This package allows you to use Meteor with any **database** or **data source**.
+Lets you subscribe to custom Meteor publications of any **database** or **data source** via [ccorcos:any-db](https://github.com/ccorcos/meteor-any-db). Written in ES6, compatible with React Native.
 
 [Check out this article](https://medium.com/p/feb09105c343/).
 
 # Getting Started
 
-Simply add this package to your project:
+Simply add the two packages to your project:
 
-    meteor add ccorcos:any-db
+```
+meteor add ccorcos:any-db
+npm install any-db-client
+````
 
 # API
 
-This works with any arbitrary collection. Every document needs a unique `_id` field. We'll demonstrate this with Mongo, but you could easily use `ccorcos:neo4j` or `ccorcos:rethink` as well.
+On the client, create a new DDP connection using [node-ddp-client](https://github.com/hharnisc/node-ddp-client/) and initalize `AnyDb`:
 
-Subscriptions are limited to only one argument!
+```js
+var DDPClient = require('ddp-client');
+var AnyDb = require('any-db-client');
 
-```coffee
-Messages = new Mongo.Collection('messages')
+var ddpClient = new DDPClient({
+  url: 'ws://localhost:3000/websocket',
+  maintainCollections: false    // so that only AnyDb manages our data
+});
 
-# publish an ordered collection
-AnyDb.publish 'messages', (roomId) ->
-  # make sure any async methods are wrapped in a fiber.
-  # every document needs a unique _id field.
-  Messages.find({roomId}, {sort: {time: -1}}).fetch()
+AnyDb.initialize({
+  ddpClient: ddpClient,
+  debug: true   // for extra logging
+});
 
-# subscriptions are limited to only one argument
-sub = AnyDb.subscribe 'messages', roomId, (sub) ->
-  console.log("sub ready", sub.data)
-  sub.onChange (data) ->
-    console.log("new sub data", sub.data)
-sub.stop()
+ddpClient.connect(function() {  // after connecting...
+  var UsersSub = AnyDb.subscribe('allUsers', [], function(sub) {
+    console.log('sub ready', sub.data);
+    sub.onChange((data) => {
+      // data is the entire subscription's dataset
+      console.log("new sub data", data);
+    });
+  };
+  UsersSub.stop();
+});
+```
 
-# publications must be manually refreshed if you want reactive data
-Meteor.methods
-  newMsg: (roomId, text) ->
-    Messages.insert({roomId, text, time: Date.now()})
-    # Ramda.js makes these refresh calls really clean
-    AnyDb.refresh 'messages', R.propEq('roomId', roomId)
+On the server, set up your publications as you would with [ccorcos:any-db](https://github.com/ccorcos/meteor-any-db) (this example uses [ostrio:neo4jdriver](https://github.com/VeliovGroup/ostrio-neo4jdriver), but you can use any Fiber-wrapped database library):
+
+```js
+var db = new Neo4jDB('http://localhost:7474');
+
+AnyDb.publish('allUsers', function() {
+  var allUsersQuery = db.query('MATCH (users:User) RETURN users;').fetch();
+  return Array.prototype.slice.call(allUsersQuery).map(function(node) {
+    return node.users;
+  });
+});
+
+var userCounter = 0;
+Meteor.methods('addUser', function() {
+  var user = db.query('CREATE (user:User {props}) RETURN user;', {
+    props: {
+      _id: userCounter,
+      username: 'tests' + ++userCounter
+    }
+  }).fetch();
+  AnyDb.refresh('allUsers', function() { return true; });
+  return user;
+});
+
+Meteor.methods('removeAllUsers', function() {
+  var users = db.query('MATCH nodes DELETE nodes;').fetch();
+  AnyDb.refresh('allUsers', function() { return true; });
+  return users;
+});
 ```
